@@ -1,8 +1,10 @@
+import {filterDefinitions,applyTabFilters,facetOptions,defaultFacets} from './filters.js';
 import {terminal,stateName,parseKeywords,parseDomains,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates,parseURLImport} from './ui-core.js';
 const $=id=>document.getElementById(id), fields=['domains','max','mode','include','exclude','imageThreshold','importUrls'];
 const state={task:'urls',keywords:[],last:null,id:null,view:'overview',timer:null,polling:false,cancelling:false,finished:null,filters:{},rowCache:new Map(),groupCache:new Map()};
-const defaults=()=>({search:'',priority:'',category:'',kind:'',sort:'default',page:0,size:50});
-const filter=()=>state.filters[state.view]||(state.filters[state.view]={...defaults(),kind:state.view==='broken'?'findings':''});
+const defaults=()=>({search:'',facets:{},sort:'default',page:0,size:50});
+const facetCache=new Map();
+const filter=()=>state.filters[state.view]||(state.filters[state.view]={...defaults(),facets:defaultFacets(state.view)});
 const store={get(key){try{return JSON.parse(localStorage.getItem(key));}catch{return null;}},set(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const lines=id=>$(id).value.split(/\n/).map(s=>s.trim()).filter(Boolean);
 function showNotice(message){$('notice').textContent=message;$('notice').hidden=!message;}
@@ -33,7 +35,7 @@ function configuration(){
 $('scanForm').onsubmit=async e=>{
  e.preventDefault();if(state.id&&!terminal(state.last))return;const data=configuration();if(!data)return;showNotice('');saveDraft();$('scan').disabled=true;$('settings').disabled=true;
  try{const response=await fetch('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),body=await response.json();if(!response.ok)throw Error(body.error||'Der Scan konnte nicht gestartet werden.');
- clearTimeout(state.timer);state.id=body.id;state.cancelling=false;state.finished=null;state.filters={};state.rowCache.clear();state.groupCache.clear();state.view='overview';store.set('scanner-current-v3',body.id);
+ clearTimeout(state.timer);state.id=body.id;state.cancelling=false;state.finished=null;state.filters={};facetCache.clear();$('dataPanel').dataset.view='';state.rowCache.clear();state.groupCache.clear();state.view='overview';store.set('scanner-current-v3',body.id);
  state.last={id:body.id,status:'queued',phase:'queued',task:data.task,configuration:data,seoAudit:data.seoAudit,imageAudit:data.imageAudit,imageThresholdKb:data.imageThresholdKb,include:data.include,exclude:data.exclude,stats:[],pages:[],results:[],problems:[],images:[],brokenAudit:data.brokenAudit,externalLinks:data.externalLinks,importedUrls:data.importedUrls,brokenLinks:[],logs:[],createdAt:new Date().toISOString()};
  $('setup').hidden=true;render();$('runTitle').focus();await poll();
  }catch(err){showNotice(err.message);}finally{$('scan').disabled=false;$('settings').disabled=false;}
@@ -85,15 +87,13 @@ function renderOverview(progress){
  $('assessmentText').textContent=!terminal(j)?'Die Aufgabenübersicht wird erst nach Abschluss erstellt. Live-Daten findest du bereits unter URLs.':progress.partial?'Prüfe zuerst die Einschränkungen und Abruffehler. Eine leere Aufgabenliste bedeutet hier nicht automatisch, dass alles in Ordnung ist.':problems.length+' Befunde auf '+affected+' URLs. Zusammengehörige Befunde sind als Aufgaben gruppiert.';
  $('auditLimits').textContent=j.imageAudit?'Bilder: maximal 500 Bild-URLs je Domain; img-, Lazy-Loading- und srcset-Quellen, keine CSS-Hintergrundbilder. Leerer Alt-Text kann bei dekorativen Bildern korrekt sein. Größen ohne vollständigen Download sind Mindestwerte.':'Die Bilderprüfung war für diesen Scan deaktiviert.';
  const top=groupProblems(problems).slice(0,4),signature=JSON.stringify(top);
- if($('topIssues').dataset.signature!==signature){$('topIssues').dataset.signature=signature;$('topIssues').replaceChildren(...top.map(g=>{const button=document.createElement('button');button.className='secondary';button.textContent=g.priority+' · '+g.issue+' · '+g.affected+' URLs';button.onclick=()=>{state.filters.problems={...defaults(),search:g.issue,priority:g.priority,category:g.category};view('problems');};return button;}));}
+ if($('topIssues').dataset.signature!==signature){$('topIssues').dataset.signature=signature;$('topIssues').replaceChildren(...top.map(g=>{const button=document.createElement('button');button.className='secondary';button.textContent=g.priority+' · '+g.issue+' · '+g.affected+' URLs';button.onclick=()=>{state.filters.problems={...defaults(),facets:{priority:[g.priority],category:[g.category],issue:[g.issue]}};view('problems');};return button;}));}
 }
 const help={broken:'404/410 sind bestätigte HTTP-Antworten; Soft-404 ist nur ein Verdacht. Die Details verbinden jede Quellseite mit ihrem Linktext. Nicht prüfbare und bewusst ausgeschlossene Ziele sind gesondert filterbar. Externe Links werden nicht rekursiv verfolgt.',problems:'Gleiche Befunde werden gruppiert. Prioritäten sind Prüfhinweise; bewusste Weiterleitungen und leere Alt-Texte können korrekt sein.',pages:'Kompakte Seitenübersicht. SEO-Angaben und Quellseiten stehen in den Details. Klicktiefe zählt ab der eingegebenen Start-URL.',keywords:'Eine Zeile je Keyword und Seite. Die Trefferzahl zählt Vorkommen im Seitentext.',http:'Nur interne Seiten im gewählten Crawl-Bereich. Details zeigen Weiterleitungsschritte und tatsächlich verlinkende Quellseiten.',images:'Größenschwelle: '+''};
 function allRows(){const j=state.last||{};return state.view==='broken'?j.brokenLinks||[]:state.view==='problems'?j.problems||[]:state.view==='keywords'?j.results||[]:state.view==='images'?j.images||[]:j.pages||[];}
 function selectedRows(){
  const f=filter();let rows=filterRecords(allRows(),f.search);
- if(state.view==='problems')rows=rows.filter(p=>(!f.priority||p.priority===f.priority)&&(!f.category||p.category===f.category));
- if(state.view==='broken'&&f.kind)rows=rows.filter(p=>f.kind==='findings'?Boolean(p.issue)&&!['excluded','blocked','queued'].includes(p.status):f.kind==='404'?[404,410].includes(p.finalStatusCode??p.statusCode):f.kind==='soft'?p.soft404:f.kind==='external'?p.external:f.kind==='files'?p.kind==='Datei':f.kind==='images'?p.kind==='Bild':f.kind==='unchecked'?['queued','excluded','blocked','error'].includes(p.status):true);
- if(state.view!=='broken'&&f.kind)rows=rows.filter(p=>f.kind==='errors'?['error','http-error','not-image'].includes(p.status)||p.finalStatusCode>=400:f.kind==='redirects'?p.redirects?.length:f.kind==='missing'?p.missingAltSources?.length:f.kind==='empty'?p.emptyAltSources?.length:f.kind==='large'?p.bytes>(state.last.imageThresholdKb||200)*1024:true);
+ rows=applyTabFilters(rows,filterDefinitions(state.view,allRows(),state.last),f.facets);
  if(f.sort!=='default')rows=[...rows].sort((a,b)=>f.sort==='url'?a.url.localeCompare(b.url):f.sort==='title'?(a.title||'').localeCompare(b.title||''):['bytes','count'].includes(f.sort)?(b[f.sort]??-1)-(a[f.sort]??-1):(a[f.sort]??Infinity)-(b[f.sort]??Infinity));return rows;
 }
 function applyFilters(){
@@ -103,27 +103,48 @@ function applyFilters(){
  if(state.view==='images')sorts.push(['bytes','Bildgröße (absteigend)']);
  if(state.view==='keywords')sorts.push(['count','Vorkommen (absteigend)']);
  $('sort').replaceChildren(...sorts.map(([value,label])=>{const option=text('option',label);option.value=value;return option;}));
- for(const id of ['search','priority','category','sort'])$(id).value=f[id];
- const kinds=state.view==='broken'?[['findings','Befunde / Verdachtsfälle'],['','Alle Linkziele'],['404','HTTP 404 / 410'],['soft','Soft-404-Verdacht'],['external','Externe Ziele'],['files','Dateien / PDFs'],['images','Bilder'],['unchecked','Nicht geprüft / nicht prüfbar']]:state.view==='http'?[['','Alle Seiten'],['errors','HTTP-/Abruffehler'],['redirects','Weiterleitungen']]:state.view==='images'?[['','Alle Bilder'],['missing','Alt-Attribut fehlt'],['empty','Alt-Text leer'],['large','Große Bilder'],['errors','Fehler / kein Bildtyp']]:[];
- $('kind').replaceChildren(...kinds.map(([value,label])=>{const option=text('option',label);option.value=value;return option;}));$('kind').value=f.kind;$('pageSize').value=String(f.size);
+ for(const id of ['search','sort'])$(id).value=f[id];
+ $('pageSize').value=String(f.size);
 }
 function renderView(){
  const j=state.last;if(!j)return;
  for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===state.view));
  const overview=state.view==='overview';$('overview').hidden=!overview;$('dataPanel').hidden=overview;$('exportToggle').disabled=overview;if(overview){$('exportMenu').hidden=true;return;}
  const f=filter();$('viewTitle').textContent=viewLabels[state.view];$('viewHelp').textContent=state.view==='images'?'Große Bilder ab '+(j.imageThresholdKb||200)+' KB. Fehlende und leere Alt-Attribute sind getrennt aufgeführt.':help[state.view];
- $('priorityField').hidden=$('categoryField').hidden=state.view!=='problems';$('kindField').hidden=!['http','images','broken'].includes(state.view);
+
  if($('dataPanel').dataset.view!==state.view){$('dataPanel').dataset.view=state.view;state.rowCache.clear();state.groupCache.clear();$('rows').replaceChildren();$('groups').replaceChildren();applyFilters();}
  const rows=selectedRows(),grouped=state.view==='problems',records=grouped?groupProblems(rows):rows,pages=Math.max(1,Math.ceil(records.length/f.size));f.page=Math.max(0,Math.min(f.page,pages-1));
  $('rowCount').textContent=grouped?rows.length+' Befunde in '+records.length+' Gruppen · '+new Set(rows.map(p=>p.url)).size+' betroffene URLs':rows.length+' von '+allRows().length+' Ergebnissen';
  $('pageInfo').textContent='Seite '+(f.page+1)+' von '+pages;$('prev').disabled=f.page===0;$('next').disabled=f.page>=pages-1;
  $('tableWrap').hidden=grouped||!records.length;$('groups').hidden=!grouped||!records.length;$('empty').hidden=Boolean(records.length);$('pagination').hidden=!records.length;
- if(!records.length){const active=f.search||f.priority||f.category||f.kind;$('emptyTitle').textContent=!terminal(j)&&grouped?'Noch nicht ausgewertet':active?'Keine Ergebnisse für diese Filter':'Keine Ergebnisse';$('emptyText').textContent=!terminal(j)&&grouped?'Die Aufgaben werden nach Abschluss des Scans erstellt.':active?'Entferne einzelne Filter oder setze alle Filter zurück.':progressState(j).partial?'Die Prüfung ist unvollständig. Beachte die Einschränkungen oben.':!terminal(j)?'Dieser Bereich füllt sich im Verlauf des Scans.':'Für den gewählten Prüfumfang wurden hier keine Ergebnisse gefunden.';}
- if(!records.length&&state.view==='broken'&&!f.search&&f.kind==='findings'){$('emptyTitle').textContent=terminal(j)?'Keine defekten Links oder Verdachtsfälle gefunden':'Linkprüfung läuft';$('emptyText').textContent=terminal(j)?'Unter „Alle Linkziele“ findest du auch erfolgreiche und nicht geprüfte Ziele. Beachte mögliche Einschränkungen des Scans.':'Die Ziele werden nach dem Seiten-Crawl geprüft. Noch ist keine abschließende Bewertung möglich.';}
+ if(!records.length){const active=f.search||Object.values(f.facets).some(v=>v.length);$('emptyTitle').textContent=!terminal(j)&&grouped?'Noch nicht ausgewertet':active?'Keine Ergebnisse für diese Filter':'Keine Ergebnisse';$('emptyText').textContent=!terminal(j)&&grouped?'Die Aufgaben werden nach Abschluss des Scans erstellt.':active?'Entferne einzelne Filter oder setze alle Filter zurück.':progressState(j).partial?'Die Prüfung ist unvollständig. Beachte die Einschränkungen oben.':!terminal(j)?'Dieser Bereich füllt sich im Verlauf des Scans.':'Für den gewählten Prüfumfang wurden hier keine Ergebnisse gefunden.';}
  if(state.view==='broken'&&j.brokenAudit===false){$('viewHelp').textContent='Die zusätzliche Linkprüfung war für diesen Scan deaktiviert.';if(!records.length){$('emptyTitle').textContent='Linkprüfung nicht aktiviert';$('emptyText').textContent='Aktiviere „Defekte Links prüfen“ bei einem neuen Scan oder verwende „URL-Liste prüfen“.';}}
  $('exportFiltered').disabled=!rows.length;$('exportAll').disabled=!allRows().length;
- const chips=[];for(const id of ['search','priority','category','kind'])if(f[id])chips.push(chip((id==='kind'?$('kind').selectedOptions[0]?.textContent:f[id])||f[id],()=>{f[id]='';f.page=0;applyFilters();renderView();}));$('filterChips').replaceChildren(...chips);$('resetFilters').disabled=!chips.length&&f.sort==='default';
+ renderFacets();
+ const chips=[];if(f.search)chips.push(chip('Suche: '+f.search,()=>{f.search='';f.page=0;applyFilters();renderView();}));
+ for(const def of filterDefinitions(state.view,allRows(),j))for(const value of f.facets[def.id]||[]){const label=def.options.find(o=>o.value===value)?.label||value;chips.push(chip(def.label+': '+label,()=>{f.facets[def.id]=f.facets[def.id].filter(v=>v!==value);if(!f.facets[def.id].length)delete f.facets[def.id];f.page=0;renderView();}));}
+ $('filterChips').replaceChildren(...chips);$('resetFilters').disabled=!chips.length&&f.sort==='default';
  const visible=records.slice(f.page*f.size,(f.page+1)*f.size);if(grouped)renderGroups(visible);else renderTable(visible);
+}
+function renderFacets(){
+ const f=filter(),definitions=filterDefinitions(state.view,allRows(),state.last),searched=filterRecords(allRows(),f.search),desired=[];let restoreFocus=null;
+ for(const def of definitions){
+  const key=state.view+':'+def.id,opts=facetOptions(searched,definitions,f.facets,def),selected=f.facets[def.id]||[],signature=JSON.stringify([opts,selected]);let cached=facetCache.get(key);
+  if(!cached){const element=details(def.label);element.className='facet';element.dataset.facet=def.id;cached={element,signature:null};facetCache.set(key,cached);}
+  const element=cached.element;
+  element.firstChild.textContent=def.label+(selected.length?' ('+selected.length+')':'');
+  if(cached.signature!==signature){const active=element.contains(document.activeElement)?document.activeElement?.value:null;const list=document.createElement('fieldset');list.className='facet-options';const legend=text('legend',def.label);legend.className='sr-only';list.append(legend);
+   for(const opt of opts){const label=document.createElement('label');label.className='facet-option';const input=document.createElement('input');input.type='checkbox';input.value=opt.value;input.checked=selected.includes(opt.value);input.setAttribute('aria-label',def.label+': '+opt.label);
+    input.onchange=()=>{const current=filter(),values=new Set(current.facets[def.id]||[]);if(input.checked)values.add(opt.value);else values.delete(opt.value);if(values.size)current.facets[def.id]=[...values];else delete current.facets[def.id];current.page=0;renderView();};
+    label.append(input,text('span',opt.label),text('small',String(opt.count),'facet-count'));list.append(label);
+    if(active===opt.value)restoreFocus=input;
+   }
+   if(!opts.length)list.append(text('p','Noch keine Werte verfügbar.','muted small'));
+   const old=element.querySelector('fieldset');if(old)old.replaceWith(list);else element.append(list);cached.signature=signature;
+  }
+  desired.push(element);
+ }
+ syncChildren($('facets'),desired);restoreFocus?.focus({preventScroll:true});
 }
 function renderGroups(groups){
  const parent=$('groups'),desired=[];
@@ -156,7 +177,7 @@ function renderTable(records){
 }
 function jSeo(){return Boolean(state.last?.seoAudit);}
 function httpCode(p){const code=p.statusCode;if(!code)return 'Noch unbekannt';const labels={200:'OK',301:'Dauerhaft umgeleitet',302:'Vorübergehend umgeleitet',403:'Zugriff verweigert',404:'Nicht gefunden',500:'Serverfehler',503:'Nicht verfügbar'};return code+(labels[code]?' – '+labels[code]:'')+(p.finalStatusCode&&p.finalStatusCode!==code?' → '+p.finalStatusCode:'');}
-for(const id of ['search','priority','category','kind','sort'])$(id).oninput=()=>{filter()[id]=$(id).value;filter().page=0;renderView();};
+for(const id of ['search','sort'])$(id).oninput=()=>{filter()[id]=$(id).value;filter().page=0;renderView();};
 $('resetFilters').onclick=()=>{state.filters[state.view]=defaults();applyFilters();renderView();};
 $('prev').onclick=()=>{filter().page--;renderView();};$('next').onclick=()=>{filter().page++;renderView();};$('pageSize').onchange=()=>{filter().size=Number($('pageSize').value);filter().page=0;renderView();};
 $('exportToggle').onclick=()=>{$('exportMenu').hidden=!$('exportMenu').hidden;$('exportToggle').setAttribute('aria-expanded',String(!$('exportMenu').hidden));};

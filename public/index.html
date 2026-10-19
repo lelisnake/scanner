@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Domain Scanner 3.1</title><link rel="stylesheet" href="/styles.css"></head>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Domain Scanner 3.2</title><link rel="stylesheet" href="/styles.css"></head>
 <body><main class="wrap">
-<header class="brand"><div><p class="eyebrow">WEBSITES VERSTEHEN. GEZIELT VERBESSERN.</p><h1>Domain Scanner <span class="version">3.1</span></h1></div><button id="newScan" class="secondary" hidden>Neuen Scan einrichten</button></header>
+<header class="brand"><div><p class="eyebrow">WEBSITES VERSTEHEN. GEZIELT VERBESSERN.</p><h1>Domain Scanner <span class="version">3.2</span></h1></div><button id="newScan" class="secondary" hidden>Neuen Scan einrichten</button></header>
 <div id="notice" class="notice" role="status" hidden></div>
 <section id="setup" class="panel">
 <h2>Was möchtest du prüfen?</h2>
@@ -32,15 +32,13 @@
 <div id="overview" class="panel"><div id="metrics" class="metrics"></div><h3 id="assessment">Auswertung läuft</h3><p id="assessmentText" class="muted"></p><div id="topIssues" class="issue-list"></div><details class="advanced"><summary>Was wurde geprüft – und was nicht?</summary><p>Nur öffentliche Seiten im gewählten Startbereich, einschließlich www-Variante. robots.txt wird berücksichtigt. Nicht verlinkte Seiten können fehlen. Die Klicktiefe zählt ab deiner Start-URL (0). „Potenziell indexierbar“ bestätigt keine Aufnahme in Google.</p><p id="auditLimits"></p><p>Interne Links zählen eindeutige Quell-/Zielseiten, auch nofollow. Sitemap- und Canonical-Einträge erzeugen keinen Linkpfad.</p></details></div>
 <div id="dataPanel" class="panel" hidden><div class="section-head"><div><h3 id="viewTitle"></h3><p id="viewHelp" class="muted small"></p></div></div>
 <div class="toolbar"><div class="search-field"><label for="search">Ergebnisse durchsuchen</label><input id="search" type="search" placeholder="URL, Text oder Befund suchen"></div>
-<div id="priorityField" hidden><label for="priority">Priorität</label><select id="priority"><option value="">Alle</option><option>Hoch</option><option>Mittel</option><option>Hinweis</option></select></div><div id="categoryField" hidden><label for="category">Kategorie</label><select id="category"><option value="">Alle</option><option>HTTP</option><option>Weiterleitung</option><option>SEO</option><option>Bild</option><option>Link</option></select></div>
-<div id="kindField" hidden><label for="kind">Anzeigen</label><select id="kind"></select></div>
 <div><label for="sort">Sortieren nach</label><select id="sort"><option value="default">Standard</option><option value="url">URL A–Z</option><option value="statusCode">HTTP-Code</option><option value="depth">Klicktiefe</option><option value="bytes">Bildgröße (absteigend)</option></select></div><button id="resetFilters" class="secondary">Filter zurücksetzen</button></div>
-<div id="filterChips" class="chips" aria-label="Aktive Filter"></div><p id="rowCount" class="muted small" role="status"></p>
+<div id="facets" class="facets" aria-label="Filter für diesen Auswertungsbereich"></div><p class="muted small filter-help">Mehrfachauswahl: Werte innerhalb eines Filters gelten als „oder“, verschiedene Filter als „und“. Ohne Auswahl gilt „Alle“. Die Zahlen berücksichtigen die übrigen Filter.</p><div id="filterChips" class="chips" aria-label="Aktive Filter"></div><p id="rowCount" class="muted small" role="status"></p>
 <div id="empty" class="empty" hidden><h3 id="emptyTitle"></h3><p id="emptyText"></p></div>
 <div id="groups" class="issue-list" hidden></div>
 <div id="tableWrap" class="table-wrap"><table><caption id="caption" class="sr-only"></caption><thead id="columns"></thead><tbody id="rows"></tbody></table></div>
 <div id="pagination" class="pagination"><button id="prev" class="secondary">Zurück</button><span id="pageInfo"></span><button id="next" class="secondary">Weiter</button><label for="pageSize" class="sr-only">Ergebnisse je Seite</label><select id="pageSize"><option value="25">25 je Seite</option><option value="50" selected>50 je Seite</option><option value="100">100 je Seite</option></select></div>
 </div>
 <details id="technical" class="panel"><summary>Technische Details & Protokoll</summary><p class="muted small">Scans liegen im Server-Arbeitsspeicher und können bei einem Neustart verloren gehen. Die letzte Scan-ID wird nur in diesem Browser gespeichert.</p><pre id="logs"></pre></details>
-</section><footer>Domain Scanner 3.1 · Deine Daten, klar aufbereitet.</footer>
+</section><footer>Domain Scanner 3.2 · Deine Daten, klar aufbereitet.</footer>
 </main><script type="module" src="/app.js"></script></body></html>

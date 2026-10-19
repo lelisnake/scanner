@@ -14,7 +14,8 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(origin+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,30));}
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
- const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await context.newPage(),errors=[];
+ async function chooseFacet(group,value,checked=true){const details=page.locator('[data-facet="'+group+'"]');if(!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();await details.locator('input[value='+JSON.stringify(value)+']').setChecked(checked);}page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/scans',async route=>{body=route.request().postDataJSON();await route.fulfill({status:202,json:{id}});});
  await page.route('**/api/scans/'+id,async route=>{gets++;if(networkFailure){await route.abort();return;}await route.fulfill({status:expired?404:200,json:expired?{error:'Scan nicht gefunden'}:job});});
  await page.route('**/api/scans/'+id+'/cancel',async route=>{job={...job,status:'cancelled',phase:'done',completedAt:new Date().toISOString()};await route.fulfill({json:{ok:true}});});
@@ -54,7 +55,7 @@ try{
  assert.equal(await page.locator('#groups details.issue-group').count(),1);
  await page.locator('#groups summary').first().click();
  assert((await page.locator('#groups').innerText()).includes(root+'/2'));
- await page.locator('#priority').selectOption('Mittel');await page.locator('#emptyTitle').filter({hasText:'Keine Ergebnisse für diese Filter'}).waitFor();
+ await chooseFacet('priority','Mittel');await page.locator('#emptyTitle').filter({hasText:'Keine Ergebnisse für diese Filter'}).waitFor();
  await page.locator('#resetFilters').click();assert.equal(await page.locator('#groups details.issue-group').count(),1);
  await page.locator('[data-view="pages"]').click();
  await page.locator('#search').fill('not-found');assert.equal(await page.locator('#exportToggle').isEnabled(),true);
@@ -64,12 +65,20 @@ try{
  const csv=await readFile(await download.path(),'utf8');assert(csv.includes(root));assert(csv.includes('Projekt Finkengarten'));
 
  await page.locator('[data-view="broken"]').click();assert.equal(await page.locator('#rows > tr').count(),2);
- await page.locator('#kind').selectOption('404');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('#resetFilters').click();await chooseFacet('finding','404');assert.equal(await page.locator('#rows > tr').count(),1);
  await page.locator('#rows details > summary').first().click();assert((await page.locator('#rows').innerText()).includes('Exposé herunterladen'));assert((await page.locator('#rows').innerText()).includes('Preisliste'));
  await page.locator('#exportToggle').click();const brokenDownloadPromise=page.waitForEvent('download');await page.locator('#exportFiltered').click();const brokenDownload=await brokenDownloadPromise;
  const brokenCSV=await readFile(await brokenDownload.path(),'utf8');assert(brokenCSV.includes('Exposé herunterladen'));assert(brokenCSV.includes('Preisliste'));assert.equal(brokenCSV.split('\r\n').length,3);
- await page.locator('#kind').selectOption('soft');assert.equal(await page.locator('#rows > tr').count(),1);
- await page.locator('#kind').selectOption('');assert.equal(await page.locator('#rows > tr').count(),3);
+ await chooseFacet('finding','404',false);await chooseFacet('finding','soft');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('#resetFilters').click();assert.equal(await page.locator('#rows > tr').count(),3);
+
+ await page.locator('[data-view="keywords"]').click();await chooseFacet('keyword','Natur');await chooseFacet('keyword','Segeln');assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('#rows > tr').count(),1);
+ await chooseFacet('count','1');assert.equal(await page.locator('#rows > tr').count(),0);
+ await chooseFacet('count','2-5');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('[data-view="pages"]').click();await chooseFacet('http','200');await chooseFacet('depth','0');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('[data-view="keywords"]').click();assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('[data-facet="count"] input:checked').count(),2);
+ await page.locator('[data-view="pages"]').click();assert.equal(await page.locator('[data-facet="http"] input:checked').count(),1);await page.locator('#resetFilters').click();assert.equal(await page.locator('#facets input:checked').count(),0);
+ console.log('PASS: checkbox multi-select, AND combinations, no-hit state, per-tab retention and complete reset');
  await page.locator('#newScan').click();await page.locator('#urlsTab').click();
  assert((await page.locator('#resultTitle').innerText()).includes('Keyword-Scan'),'draft mode must not relabel previous results');
  await page.reload();await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();

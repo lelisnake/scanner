@@ -85,3 +85,16 @@ Neben jeder eingegebenen Start-URL erscheint nach dem Start deren Favicon. Zunä
 - 401/403/429 und Abruffehler sind keine Bestätigung gelöschter Inhalte. Sie werden getrennt mit Prüfempfehlung angezeigt. Nicht geprüfte Ziele (robots.txt, Scope, deaktivierte externe Prüfung, Limits) werden ausdrücklich gekennzeichnet.
 - Die CSV-Aufgabenliste exportiert **eine Zeile je Ziel/Quellseite/Linktext-Zuordnung**, mit Priorität, Befund, HTTP-Codes, Empfehlung, Soft-404-Begründung und Weiterleitungen. Filterexport und Gesamtexport stehen wie in anderen Reitern bereit.
 - Maximal 5000 eindeutige Linkziele je Scan; erreichte Limits und Abbrüche werden gemeldet. Seitenantworten werden wiederverwendet, statt sie erneut abzurufen. Datei-/Bildantworten werden ohne Voll-Download geprüft; HTML wird bis 2 MB gelesen.
+
+## Auswertungsfilter mit Mehrfachauswahl (3.2)
+
+Alle Datenreiter erhalten aufklappbare Filtergruppen mit Checkboxen. Mehrere Werte innerhalb einer Gruppe werden mit ODER kombiniert, verschiedene Gruppen mit UND; die Textsuche gilt zusätzlich. Keine Auswahl bedeutet alle Werte. Zahlen neben den Optionen zählen Ergebnisse unter den übrigen aktiven Filtern. Werte mit null Treffern bleiben auswählbar. Einzelne Werte können über Chips entfernt, sämtliche Filter mit „Filter zurücksetzen“ gelöscht werden.
+
+- URLs: HTTP-Status beim Aufruf, Prüfstatus, SEO-Befund und Indexierbarkeit (bei aktivierter SEO-Prüfung), Klicktiefe, Domain.
+- Keywords: Keyword-Auswahl einschließlich eingegebener Begriffe ohne Treffer, Vorkommen je Seite (1 / 2–5 / ab 6), Domain.
+- Aufgaben: Priorität, Kategorie, konkreter Befund, Domain.
+- HTTP: Status beim Aufruf und am Ziel getrennt, Prüfstatus, keine/eine/mehrere Weiterleitungen oder Schleife, Domain.
+- Bilder: fehlendes/leeres Alt-Attribut, überschrittene individuelle Größenschwelle, Abruf-/Bildtypfehler, HTTP-Status, Prüfstatus, Dateigrößenklassen, Domain. Mindestgrößen bleiben von exakten Größen getrennt.
+- Defekte Links: 404, 410, Soft-404, andere HTTP-/Abruffehler, nicht geprüfte und erfolgreiche Ziele; finaler HTTP-Code, Zieltyp, intern/extern/importiert, Domain. Die Standardauswahl „Alle Befunde / Verdachtsfälle“ lässt sich entfernen; Zurücksetzen zeigt sämtliche Linkziele.
+
+Filter und ihre offenen Gruppen bleiben im laufenden Browser beim Reiterwechsel erhalten. Ein erfolgreich gestarteter neuer Scan setzt sie zurück. Nach einem Neuladen beginnt die Filterauswahl neu. Gefilterte CSV-Exporte enthalten genau die durch alle Filter und Suche ausgewählten Ergebnisse. Nicht ausgewertete SEO-Daten werden ausdrücklich als unbekannt/ausstehend behandelt.

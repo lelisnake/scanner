@@ -1,11 +1,11 @@
 {
   "name": "domain-keyword-scanner",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check audit.js && node --check broken-links.js && node --check public/app.js && node --check public/ui-core.js",
-    "test": "node tests/integration.mjs && node tests/ui.mjs",
+    "check": "node --check server.js && node --check audit.js && node --check broken-links.js && node --check public/app.js && node --check public/ui-core.js && node --check public/filters.js",
+    "test": "node tests/integration.mjs && node tests/ui.mjs && node tests/filters.mjs",
     "test:browser": "node tests/browser.mjs"
   },
   "engines": {
@@ -14,7 +14,7 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "express": "^4.21.2",
-    "robots-parser": "^3.1.0",
+    "robots-parser": "^3.0.1",
     "playwright": "1.56.1"
   }
 }
