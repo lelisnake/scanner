@@ -17,3 +17,5 @@ export function progressState(job){
  if(phase==='pages')return {label:'Seiten prüfen',percent:null,detail:sum('processed')+' URLs bearbeitet · '+sum('discovered')+' bisher entdeckt · '+sum('queued')+' warten'};
  return {label:'URLs ermitteln',percent:null,detail:sum('discovered')+' URLs gefunden · Sitemaps werden gelesen'};
 }
+
+export function faviconCandidates(input,declared){try{const root=new URL(/^https?:\/\//i.test(input)?input:'https://'+input),urls=[];if(declared){const icon=new URL(declared,root);if(/^https?:$/.test(icon.protocol)&&icon.hostname.replace(/^www\./,'')===root.hostname.replace(/^www\./,'')&&!icon.username&&!icon.password&&!icon.port)urls.push(icon.href);}urls.push(root.origin+'/favicon.ico');return [...new Set(urls)];}catch{return [];}}

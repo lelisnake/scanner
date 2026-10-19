@@ -69,3 +69,7 @@ Problemübersicht und Quellseiten sind bei Abbruch oder Seitenlimits unvollstän
 - Entwürfe und die letzte Scan-ID werden lokal im Browser gespeichert. Ein Neuladen kann den Scan wiederherstellen, solange er serverseitig existiert. Das ist keine dauerhafte Crawl-Historie: Ergebnisse verschwinden bei Serverneustart oder nach der Aufbewahrungszeit. Verbindungsfehler werden mit Wiederholungsmöglichkeit erklärt.
 
 Prüfung: `npm test` für API und Oberflächen-Hilfsfunktionen. `npm run test:browser` prüft mit lokal installiertem Playwright-Chromium die Bedienabläufe bei Desktop- und Mobilbreite (vorher `npx playwright install chromium`). Es werden simulierte API-Antworten benutzt; die Tests starten keine Scans fremder Websites. Bildschirmaufnahmen für die lokale Layoutprüfung liegen unter `/tmp/scanner-qa/`.
+
+## Favicon am Scan-Titel (3.0.1)
+
+Neben jeder eingegebenen Start-URL erscheint nach dem Start deren Favicon. Zunächst wird /favicon.ico auf der Domain verwendet; nach dem ersten erfolgreichen Seitenabruf wird ein im HTML angegebenes Icon berücksichtigt (Domain einschließlich www-Variante). Externe Icon-Dienste werden nicht verwendet. Nicht ladbare Icons werden ausgeblendet. Bei mehreren Domains erhält jede URL ein eigenes Icon.

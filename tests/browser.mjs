@@ -18,6 +18,7 @@ try{
  await page.route('**/api/scans',async route=>{body=route.request().postDataJSON();await route.fulfill({status:202,json:{id}});});
  await page.route('**/api/scans/'+id,async route=>{gets++;if(networkFailure){await route.abort();return;}await route.fulfill({status:expired?404:200,json:expired?{error:'Scan nicht gefunden'}:job});});
  await page.route('**/api/scans/'+id+'/cancel',async route=>{job={...job,status:'cancelled',phase:'done',completedAt:new Date().toISOString()};await route.fulfill({json:{ok:true}});});
+ await page.route('**/favicon.ico',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAGUlEQVR4nGNkYPjPQApgIkn1qIZRDUNKAwA+MAEfWiW9ygAAAABJRU5ErkJggg==','base64')}));
  await page.goto(origin);
  await page.getByRole('button',{name:'Scan starten',exact:true}).click();
  await page.locator('#domainError').waitFor({state:'visible'});assert.equal(await page.locator('#domains').getAttribute('aria-invalid'),'true');
@@ -28,6 +29,7 @@ try{
  await page.locator('#seoAudit').check();await page.locator('#imageAudit').check();
  await page.getByRole('button',{name:'Scan starten',exact:true}).click();
  await page.locator('#phase').filter({hasText:'Seiten prüfen'}).waitFor();
+ assert.equal(await page.locator('#runTitle img').getAttribute('src'),'https://www.bonava.de/favicon.ico');assert.equal(await page.locator('#runTitle img').getAttribute('alt'),'');assert.equal(await page.locator('#runTitle img').getAttribute('width'),'24');await page.locator('#runTitle img').dispatchEvent('error');assert.equal(await page.locator('#runTitle img').isVisible(),false);assert((await page.locator('#runTitle').innerText()).includes(root));
  assert.deepEqual(body.keywords,['Segeln','Natur']);assert.equal(body.imageAudit,true);
  assert.equal(await page.locator('#setup').isVisible(),false);
  await page.locator('[data-view="pages"]').click();

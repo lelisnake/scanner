@@ -11,7 +11,7 @@ globalThis.fetch=async(url,options)=>{
  if(u.pathname==='/child.xml')return new Response('<urlset>'+['/project/sitemap-only','/project-2','/parent','/orphan','/deep','/only/a','/only/a?x=1','/only/skip','/only/redir'].map(p=>'<url><loc>https://example.com'+p+'</loc></url>').join('')+'</urlset>',{headers:{'content-type':'application/xml'}});
  if(u.pathname==='/sitemap_index.xml')return new Response('',{status:404});
 
- if(u.pathname==='/audit')return html('<title>Audit</title><h1>Audit</h1><a href="/audit/dead">Dead</a><a href="/audit/server">Server</a><a href="/audit/start">Chain</a><a href="/audit/loop">Loop</a><a href="/audit/bad-location">Bad redirect</a><a href="/audit/chain-dead">Redirect to missing</a><a href="/audit/page2">Page 2</a><img src="/assets/big.png"><img src="/assets/empty.png" alt=""><img src="/assets/missing.png" alt="Missing"><img src="/assets/not-image.png" alt="Not image"><img src="https://cdn.example.com/assets/good.png" alt="CDN"><img data-src="/assets/lazy.png" alt="Lazy"><img srcset="/assets/variant.png 2x" alt="Responsive"><img src="https://private.invalid/secret.png" alt="Unsafe"><img src="/assets/blocked.png" alt="Blocked">');
+ if(u.pathname==='/audit')return html('<link rel="icon" href="/assets/site.ico"><title>Audit</title><h1>Audit</h1><a href="/audit/dead">Dead</a><a href="/audit/server">Server</a><a href="/audit/start">Chain</a><a href="/audit/loop">Loop</a><a href="/audit/bad-location">Bad redirect</a><a href="/audit/chain-dead">Redirect to missing</a><a href="/audit/page2">Page 2</a><img src="/assets/big.png"><img src="/assets/empty.png" alt=""><img src="/assets/missing.png" alt="Missing"><img src="/assets/not-image.png" alt="Not image"><img src="https://cdn.example.com/assets/good.png" alt="CDN"><img data-src="/assets/lazy.png" alt="Lazy"><img srcset="/assets/variant.png 2x" alt="Responsive"><img src="https://private.invalid/secret.png" alt="Unsafe"><img src="/assets/blocked.png" alt="Blocked">');
  if(u.pathname==='/audit/page2')return html('<h1>Page 2</h1><img src="/assets/big.png" alt="Big photo">');
  if(u.pathname==='/audit/dead')return new Response('',{status:404});
  if(u.pathname==='/audit/server')return new Response('',{status:503});
@@ -83,6 +83,7 @@ try{
 
  requests.length=0;
  const audited=await job({task:'urls',domains:['example.com/audit'],mode:'standard'});
+ assert.equal(audited.stats[0].favicon,'https://example.com/assets/site.ico');
  const auditedPage=path=>audited.pages.find(p=>p.url==='https://example.com'+path);
  assert.equal(auditedPage('/audit/dead').statusCode,404);assert.equal(auditedPage('/audit/server').finalStatusCode,503);
  assert.deepEqual(auditedPage('/audit/dead').sourceUrls,['https://example.com/audit']);

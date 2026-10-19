@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseKeywords,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState} from '../public/ui-core.js';
+import {parseKeywords,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates} from '../public/ui-core.js';
 assert.deepEqual(parseKeywords('Segeln\nUmwelt,Segeln;Grün'),['Segeln','Umwelt','Grün']);
 assert(validateDomains(['bad input']));assert(validateDomains([]));assert(validateDomains(['http://user:pass@example.com']));
 assert.equal(validateDomains(['bonava.de','https://www.bonava.de/project']), '');
@@ -15,3 +15,7 @@ assert.equal(progressState({status:'completed',stats:[{checked:5,errors:2}]}).pa
 assert.equal(progressState({status:'cancelled',stats:[]}).partial,true);
 assert.equal(progressState({status:'completed',stats:[{checked:5,state:'done'}]}).partial,false);
 console.log('PASS: scope preview, keyword lists, validation, grouped tasks, filters, CSV safety, phase progress and partial results');
+
+assert.deepEqual(faviconCandidates('https://www.bonava.de/project','/custom.png'),['https://www.bonava.de/custom.png','https://www.bonava.de/favicon.ico']);
+assert.deepEqual(faviconCandidates('bonava.de','https://tracker.example/icon'),['https://bonava.de/favicon.ico']);
+assert.deepEqual(faviconCandidates('bonava.de','javascript:alert(1)'),['https://bonava.de/favicon.ico']);

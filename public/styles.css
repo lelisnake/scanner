@@ -3,3 +3,5 @@
 .section-head>div,.brand>div{min-width:0}#runTitle{overflow-wrap:anywhere}h2:focus{outline:2px solid #8aace3;outline-offset:4px;border-radius:3px}@media(max-width:760px){.result-heading{flex-wrap:wrap}.brand{flex-wrap:wrap}}
 .keyword-entry input{min-width:0}
 .scope,.notice,#runConfig{overflow-wrap:anywhere}
+
+.scan-site{display:flex;align-items:flex-start;gap:10px;min-width:0}.scan-site+.scan-site{margin-top:8px}.scan-url{min-width:0;overflow-wrap:anywhere}.favicon{flex:none;object-fit:contain;margin-top:4px;border-radius:4px}

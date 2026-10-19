@@ -1,4 +1,4 @@
-import {terminal,stateName,parseKeywords,parseDomains,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState} from './ui-core.js';
+import {terminal,stateName,parseKeywords,parseDomains,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates} from './ui-core.js';
 const $=id=>document.getElementById(id), fields=['domains','max','mode','include','exclude','imageThreshold'];
 const state={task:'urls',keywords:[],last:null,id:null,view:'overview',timer:null,polling:false,cancelling:false,finished:null,filters:{},rowCache:new Map(),groupCache:new Map()};
 const defaults=()=>({search:'',priority:'',category:'',kind:'',sort:'default',page:0,size:50});
@@ -58,10 +58,14 @@ function definition(parent,values){const dl=document.createElement('dl');for(con
 function view(name){state.view=name;filter();applyFilters();renderView();}
 for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>view(button.dataset.view);
 const viewLabels={overview:'Übersicht',problems:'SEO-Aufgaben',pages:'URLs & SEO',keywords:'Keyword-Treffer',http:'HTTP & Weiterleitungen',images:'Bilder'};
+function faviconHost(url){try{return new URL(/^https?:\/\//i.test(url)?url:'https://'+url).hostname;}catch{return '';}}
 function render(){
  const j=state.last;if(!j)return;$('run').hidden=false;$('results').hidden=false;$('cancel').hidden=terminal(j);$('cancel').disabled=state.cancelling;$('cancel').textContent=state.cancelling?'Wird gestoppt …':'Scan stoppen';$('newScan').hidden=!terminal(j);
  $('runMode').textContent=(j.task==='keywords'?'Keyword-Scan':'URL-Crawl')+' · '+stateName(j.status);
- $('runTitle').textContent=(j.configuration?.domains||j.stats?.map(s=>s.startUrl||s.domain)||[]).join(' · ')||'Dein Scan';
+ const startUrls=j.configuration?.domains||j.stats?.map(s=>s.startUrl||s.domain)||[];
+ const identities=startUrls.map(url=>({url,icons:faviconCandidates(url,(j.stats||[]).find(s=>s.startUrl===url||s.domain===faviconHost(url))?.favicon)}));
+ const identitySignature=JSON.stringify(identities);
+ if($('runTitle').dataset.identity!==identitySignature){$('runTitle').dataset.identity=identitySignature;$('runTitle').replaceChildren(...identities.map(({url,icons})=>{const site=document.createElement('span');site.className='scan-site';if(icons.length){const img=document.createElement('img');img.className='favicon';img.width=24;img.height=24;img.alt='';img.setAttribute('aria-hidden','true');img.referrerPolicy='no-referrer';let index=0;img.onerror=()=>{index++;if(index<icons.length)img.src=icons[index];else img.hidden=true;};img.src=icons[0];site.append(img);}site.append(text('span',url,'scan-url'));return site;}));if(!identities.length)$('runTitle').textContent='Dein Scan';}
  $('runConfig').textContent=[j.seoAudit?'SEO-Prüfung':'Ohne SEO-Prüfung',j.imageAudit?'Mit Bilderprüfung':'Ohne Bilderprüfung','Max. '+(j.configuration?.maxPages||5000)+' geprüfte Seiten je Domain',...(j.configuration?.keywords?.length?['Keywords: '+j.configuration.keywords.join(', ')]:[])].join(' · ');
  const progress=progressState(j);$('phase').textContent=progress.label;$('progressDetail').textContent=progress.detail;if(progress.percent===null)$('progress').removeAttribute('value');else $('progress').value=progress.percent;
  const seconds=Math.max(0,Math.floor(((j.completedAt?Date.parse(j.completedAt):Date.now())-Date.parse(j.createdAt))/1000));$('elapsed').textContent=Math.floor(seconds/60)+' Min '+seconds%60+' Sek';
