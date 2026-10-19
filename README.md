@@ -17,3 +17,10 @@ Nur öffentlich erreichbare und durch robots.txt erlaubte Seiten. Kein Anspruch 
 ## Sicherheit
 
 Nur für vertrauenswürdige Bediener bereitstellen; vor öffentlicher Freigabe Authentifizierung und Rate-Limiting ergänzen. DNS/IP-Validierung schützt nicht vollständig vor DNS-Rebinding. Crawling nur mit Erlaubnis und Rücksicht auf fremde Server durchführen.
+
+
+## Hauptmenü (2.1)
+
+**URLs crawlen:** Domain eingeben, Crawl starten und gefundene Seiten-URLs filtern oder als CSV exportieren. Keywords sind nicht erforderlich. Standardlimit: 5000 geprüfte Seiten. Die Liste enthält auch entdeckte, noch nicht geprüfte URLs; sie ist keine Garantie für Erreichbarkeit oder Vollständigkeit.
+
+**Keyword scannen:** Bisherige Keyword-Suche mit Trefferzahl und Textausschnitten. Beide Modi nutzen denselben Crawler und respektieren robots.txt.
