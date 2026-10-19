@@ -1,4 +1,5 @@
 import express from 'express';
+import {buildProblems} from './audit.js';
 import * as cheerio from 'cheerio';
 import robotsParser from 'robots-parser';
 import {chromium} from 'playwright';
@@ -12,7 +13,31 @@ function privateIp(ip){if(net.isIP(ip)===4){let a=ip.split('.').map(Number);retu
 const allowedHost=(h,b)=>h===b||h===(b.startsWith('www.')?b.slice(4):'www.'+b);
 function normalize(s,base,host){try{const u=new URL(s,base);if(!/^https?:$/.test(u.protocol)||!allowedHost(u.hostname,host)||u.username||u.password||u.port&&!['80','443'].includes(u.port)||/\.(pdf|png|jpe?g|gif|webp|svg|ico|zip|mp4|mp3|css|js|woff2?|docx?|xlsx?)$/i.test(u.pathname))return null;u.hash='';return u.href;}catch{return null;}}
 async function check(url,host){let u=new URL(url);if(!/^https?:$/.test(u.protocol)||!allowedHost(u.hostname,host)||u.username||u.password||u.port&&!['80','443'].includes(u.port))throw Error('Unzulässige URL');let ips=await dns.lookup(u.hostname,{all:true});if(!ips.length||ips.some(x=>privateIp(x.address)))throw Error('Nicht öffentliche IP');}
-async function get(url,host,xml=false,scope=null){for(let i=0;i<6;i++){if(scope&&!scope(url))throw Error('Weiterleitung außerhalb des Crawl-Bereichs');await check(url,host);const r=await fetch(url,{redirect:'manual',headers:{'User-Agent':UA,Accept:xml?'application/xml,text/xml,text/plain,*/*':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(12000)});if([301,302,303,307,308].includes(r.status)){url=new URL(r.headers.get('location'),url).href;continue;}if(!r.ok)throw Error('HTTP '+r.status);const type=r.headers.get('content-type')||'';if(!(xml?/xml|text\/plain|octet-stream/i:/html|xhtml/i).test(type))throw Error('Content-Type '+type);if(Number(r.headers.get('content-length')||0)>2000000)throw Error('Zu groß');let reader=r.body.getReader(),chunks=[],n=0;while(true){let {done,value}=await reader.read();if(done)break;n+=value.length;if(n>2000000){await reader.cancel();throw Error('Zu groß');}chunks.push(value);}return {url,body:Buffer.concat(chunks).toString('utf8'),robotsHeader:r.headers.get('x-robots-tag')||''};}throw Error('Zu viele Weiterleitungen');}
+async function get(url,host,xml=false,scope=null,trace=null,permit=null){
+ const visited=new Set();let redirects=[];
+ const failure=(message,type)=>{const e=Error(message);e.failureType=type;return e;};
+ try{for(let i=0;i<11;i++){
+  if(visited.has(url))throw failure('Weiterleitungsschleife','redirect-loop');visited.add(url);
+  if(scope&&!scope(url))throw failure('Weiterleitung außerhalb des Crawl-Bereichs','scope');
+  await check(url,host);if(permit&&!await permit(url))throw failure('Weiterleitungsziel durch robots.txt blockiert','robots');
+  const r=await fetch(url,{redirect:'manual',headers:{'User-Agent':UA,Accept:xml?'application/xml,text/xml,text/plain,*/*':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(12000)});
+  if(trace){trace.statusCode??=r.status;trace.finalStatusCode=r.status;trace.finalUrl=url;trace.redirects=redirects;}
+  if([301,302,303,307,308].includes(r.status)){
+   const location=r.headers.get('location');await r.body?.cancel();
+   if(!location)throw failure('Weiterleitung ohne Location','redirect-location');
+   let target;try{target=new URL(location,url).href;}catch{throw failure('Ungültiges Weiterleitungsziel','redirect-location');}
+   redirects.push({url,statusCode:r.status,target});if(trace)trace.redirects=redirects;
+   if(i===10)throw failure('Zu viele Weiterleitungen','redirect-limit');url=target;continue;
+  }
+  if(!r.ok){await r.body?.cancel();throw failure('HTTP '+r.status,'http');}
+  const type=r.headers.get('content-type')||'';
+  if(!(xml?/xml|text\/plain|octet-stream/i:/html|xhtml/i).test(type)){await r.body?.cancel();throw failure('Content-Type '+type,'content-type');}
+  if(Number(r.headers.get('content-length')||0)>2000000){await r.body?.cancel();throw failure('Zu groß','size');}
+  let reader=r.body.getReader(),chunks=[],n=0;while(true){let {done,value}=await reader.read();if(done)break;n+=value.length;if(n>2000000){await reader.cancel();throw failure('Zu groß','size');}chunks.push(value);}
+  return {url,body:Buffer.concat(chunks).toString('utf8'),robotsHeader:r.headers.get('x-robots-tag')||''};
+ }}catch(e){if(trace){trace.failureType=e.failureType||'network';trace.requestError=e.cause?.code||e.message;}throw e;}
+}
+
 function log(j,d,u,type,message){if(j.logs.length<1500)j.logs.push({time:new Date().toISOString(),domain:d,url:u,type,message:String(message).slice(0,240)});}
 async function crawl(j,domain,keys,limit,mode){const root=new URL(/^https?:\/\//i.test(domain)?domain:'https://'+domain),host=root.hostname;if(root.username||root.password||root.port)throw Error('Ungültige Domain');root.hash='';await check(root.href,host);
 const scopePath=root.pathname.replace(/\/+$/,'')||'/';
@@ -22,22 +47,68 @@ async function permitted(url){return (await robot(url)).parser.isAllowed(url,UA)
 const matches=(url,patterns)=>patterns.some(pattern=>{const target=/^https?:/i.test(pattern)?url:new URL(url).pathname+new URL(url).search;const escaped=pattern.split('*').map(part=>Array.from(part,c=>'\\^$.*+?()[]{}|'.includes(c)?'\\'+c:c).join('')).join('.*');return new RegExp('^'+escaped).test(target);});
 const inScope=url=>{const path=new URL(url).pathname;return (scopePath==='/'||path===scopePath||path.startsWith(scopePath+'/'))&&(!j.include.length||matches(url,j.include))&&!matches(url,j.exclude);};
 let q=[],seen=new Set(),done=new Set(),records=new Map(),edges=new Map(),aliases=new Map();
-function add(url,base=root.href){url=normalize(url,base,host);if(!url||!inScope(url))return null;if(!seen.has(url)&&seen.size<25000){seen.add(url);q.push(url);const record={domain:host,url,status:'queued',title:'',description:'',h1:[],canonical:'',robots:'',indexability:'Nicht geprüft',issues:[],depth:null,incoming:[],incomingCount:0,outgoingCount:0};records.set(url,record);j.pages.push(record);if(j.task==='urls')j.results.push(record);s.discovered=seen.size;s.queued=q.length;}return records.has(url)?url:null;}
+function add(url,base=root.href){url=normalize(url,base,host);if(!url||!inScope(url))return null;if(!seen.has(url)&&seen.size<25000){seen.add(url);q.push(url);const record={domain:host,url,statusCode:null,finalStatusCode:null,redirects:[],sourceUrls:[],status:'queued',title:'',description:'',h1:[],canonical:'',robots:'',indexability:'Nicht geprüft',issues:[],depth:null,incoming:[],incomingCount:0,outgoingCount:0};records.set(url,record);j.pages.push(record);if(j.task==='urls')j.results.push(record);s.discovered=seen.size;s.queued=q.length;}return records.has(url)?url:null;}
 function summarize(){
  const resolve=url=>{const visited=new Set();while(aliases.has(url)&&!visited.has(url)){visited.add(url);url=aliases.get(url);}return url;};
  const adjacency=new Map(),incoming=new Map();
  for(const [from,targets] of edges){const source=resolve(from);if(!adjacency.has(source))adjacency.set(source,new Set());for(const target of targets){const to=resolve(target);adjacency.get(source).add(to);if(!incoming.has(to))incoming.set(to,new Set());incoming.get(to).add(source);}}
  const depths=new Map(),home=resolve(root.href);if(records.has(root.href))depths.set(home,0);
  const queue=[...depths.keys()];for(let i=0;i<queue.length;i++){const from=queue[i];for(const to of adjacency.get(from)||[]){if(!depths.has(to)){depths.set(to,depths.get(from)+1);queue.push(to);}}}
- for(const record of records.values()){const url=resolve(record.url);record.incoming=[...(incoming.get(url)||[])].sort();record.incomingCount=record.incoming.length;record.outgoingCount=adjacency.get(url)?.size||0;record.depth=depths.get(url)??null;}
+ const directSources=new Map();for(const [source,targets] of edges)for(const target of targets){if(!directSources.has(target))directSources.set(target,new Set());directSources.get(target).add(source);}
+ for(const record of records.values()){record.sourceUrls=[...(directSources.get(record.url)||[])].sort();const url=resolve(record.url);record.incoming=[...(incoming.get(url)||[])].sort();record.incomingCount=record.incoming.length;record.outgoingCount=adjacency.get(url)?.size||0;record.depth=depths.get(url)??null;}
 }
 add(root.href);add(root.origin+'/');
 let sq=[],sdone=new Set();function addmap(url,base=root.href){try{url=new URL(url,base);if(allowedHost(url.hostname,host)&&/^https?:$/.test(url.protocol)&&!sq.includes(url.href)&&!sdone.has(url.href))sq.push(url.href);}catch{}}
 for(const base of [root.origin,root.protocol+'//'+(host.startsWith('www.')?host.slice(4):'www.'+host)]){addmap(base+'/sitemap.xml');addmap(base+'/sitemap_index.xml');let r=await robot(base+'/');for(let line of r.body.split(/\r?\n/)){let m=line.match(/^\s*sitemap\s*:\s*(\S+)/i);if(m)addmap(m[1],base);}}
 while(sq.length&&sdone.size<150&&!j.cancel){let url=sq.shift();if(sdone.has(url))continue;sdone.add(url);try{if(!await permitted(url))continue;let {body}=await get(url,host,true),$=cheerio.load(body,{xmlMode:true});s.sitemapFiles++;$('sitemap > loc').each((_,e)=>addmap($(e).text().trim(),url));$('url > loc').each((_,e)=>add($(e).text().trim(),url));}catch(e){log(j,host,url,'sitemap',e.message);}}
+const domainImages=new Map(),imageRobots=new Map();
+function imageUrl(raw,base){try{const u=new URL(raw,base);if(!/^https?:$/.test(u.protocol)||u.username||u.password||u.port&&!['80','443'].includes(u.port))return null;u.hash='';return u.href;}catch{return null;}}
+function collectImages($,base,source){
+ $('img').each((_,el)=>{
+  const node=$(el);
+  const candidates=['src','data-src','data-lazy-src'].map(attr=>node.attr(attr));for(const attr of ['srcset','data-srcset']){const value=node.attr(attr)||'';if(!value.startsWith('data:'))for(const entry of value.split(','))candidates.push(entry.trim().split(/\s+/)[0]);}
+  for(const candidate of new Set(candidates.filter(Boolean))){const url=imageUrl(candidate,base);if(!url)continue;
+   let image=domainImages.get(url);if(!image){if(domainImages.size>=500){s.imageLimit=true;continue;}image={domain:host,url,status:'queued',statusCode:null,bytes:null,sizeExact:false,sources:[],missingAltSources:[],emptyAltSources:[]};domainImages.set(url,image);j.images.push(image);}
+   if(!image.sources.includes(source))image.sources.push(source);
+   const alt=node.attr('alt'),key=alt===undefined?'missingAltSources':alt.trim()===''?'emptyAltSources':null;
+   if(key&&!image[key].includes(source))image[key].push(source);
+  }
+ });
+}
+async function imageAllowed(url){
+ const origin=new URL(url).origin;
+ if(!imageRobots.has(origin)){let body='';try{body=(await get(origin+'/robots.txt',new URL(origin).hostname,true)).body;}catch{}
+ imageRobots.set(origin,robotsParser(origin+'/robots.txt',body));}
+ return imageRobots.get(origin).isAllowed(url,UA)!==false;
+}
+async function auditImages(){
+ for(const image of domainImages.values()){
+  if(j.cancel)break;
+  try{let url=image.url,visited=new Set();
+   for(let hop=0;hop<6;hop++){
+    if(visited.has(url))throw Error('Weiterleitungsschleife');visited.add(url);
+    await check(url,new URL(url).hostname);
+    if(!await imageAllowed(url)){image.status='blocked';image.error='robots.txt';break;}
+    const response=await fetch(url,{redirect:'manual',headers:{'User-Agent':UA,Accept:'image/*'},signal:AbortSignal.timeout(12000)});
+    image.statusCode=response.status;image.finalUrl=url;
+    if([301,302,303,307,308].includes(response.status)){
+     const location=response.headers.get('location');await response.body?.cancel();const next=location&&imageUrl(location,url);if(!next)throw Error('Ungültiges Weiterleitungsziel');
+     if(hop===5)throw Error('Zu viele Weiterleitungen');url=next;continue;
+    }
+    if(!response.ok){await response.body?.cancel();image.status='http-error';break;}
+    if(!/^image\//i.test(response.headers.get('content-type')||'')){await response.body?.cancel();image.status='not-image';break;}
+    const length=response.headers.get('content-length');
+    if(length!==null&&/^\d+$/.test(length)){image.bytes=Number(length);image.sizeExact=true;await response.body?.cancel();}
+    else{const reader=response.body.getReader();let size=0,complete=false;while(size<=2000000){const {done,value}=await reader.read();if(done){complete=true;break;}size+=value.length;}if(!complete)await reader.cancel();image.bytes=size;image.sizeExact=complete;}
+    image.status='checked';break;
+   }
+  }catch(e){image.status='error';image.error=e.cause?.code||e.message;}
+  await pause(100);
+ }
+}
 let browser,context,page;
 async function render(url){if(!browser){browser=await chromium.launch({headless:true,args:['--no-sandbox']});context=await browser.newContext({userAgent:UA,serviceWorkers:'block'});await context.route('**/*',async route=>{try{let url=route.request().url();if(!['document','script','xhr','fetch'].includes(route.request().resourceType()))return route.abort();await check(url,host);if(route.request().resourceType()==='document'&&!inScope(url))return route.abort();if(!await permitted(url))return route.abort();return route.continue();}catch{return route.abort();}});page=await context.newPage();}await page.goto(url,{waitUntil:'domcontentloaded',timeout:18000});await page.waitForTimeout(1000);return {url:page.url(),body:await page.content()};}
-try{while(q.length&&s.checked<limit&&!j.cancel){let url=q.shift();s.queued=q.length;if(done.has(url))continue;done.add(url);try{if(!await permitted(url)){records.get(url).status='blocked';records.get(url).indexability='robots.txt blockiert';s.blocked++;log(j,host,url,'blocked','robots.txt');continue;}let result=await get(url,host,false,inScope);if(!inScope(result.url)){records.get(url).status='excluded';continue;}if(!await permitted(result.url)){records.get(url).status='blocked';records.get(url).indexability='robots.txt blockiert';s.blocked++;continue;}const robotsHeader=result.robotsHeader;let $=cheerio.load(result.body);if(mode==='always'||mode==='hybrid'&&$('script[src]').length&&$('a[href]').length<3){try{result=await render(result.url);$=cheerio.load(result.body);s.rendered++;}catch(e){log(j,host,url,'render',e.message);}}
+try{while(q.length&&s.checked<limit&&!j.cancel){let url=q.shift();s.queued=q.length;if(done.has(url))continue;done.add(url);try{if(!await permitted(url)){records.get(url).status='blocked';records.get(url).indexability='robots.txt blockiert';s.blocked++;log(j,host,url,'blocked','robots.txt');continue;}let result=await get(url,host,false,inScope,records.get(url),permitted);if(!inScope(result.url)){records.get(url).status='excluded';continue;}if(!await permitted(result.url)){records.get(url).status='blocked';records.get(url).indexability='robots.txt blockiert';s.blocked++;continue;}const robotsHeader=result.robotsHeader;let $=cheerio.load(result.body);if(mode==='always'||mode==='hybrid'&&$('script[src]').length&&$('a[href]').length<3){try{result=await render(result.url);$=cheerio.load(result.body);s.rendered++;}catch(e){log(j,host,url,'render',e.message);}}
 s.checked++;let title=$('title').first().text().trim();
 const record=records.get(url);record.status='checked';record.finalUrl=result.url;if(url!==result.url)aliases.set(url,result.url);
 record.title=title;record.description=$('meta[name]').filter((_,e)=>($(e).attr('name')||'').toLowerCase()==='description').first().attr('content')?.trim()||'';
@@ -48,13 +119,13 @@ record.indexability=/\b(noindex|none)\b/i.test(record.robots)?'noindex':'Potenzi
 if(!edges.has(result.url))edges.set(result.url,new Set());
 let base=result.url;try{const href=$('base[href]').first().attr('href');if(href)base=new URL(href,result.url).href;}catch{}
 $('a[href]').each((_,e)=>{const target=add($(e).attr('href'),base);if(target)edges.get(result.url).add(target);});
-$('link[rel="canonical"][href]').each((_,e)=>add($(e).attr('href'),result.url));$('script,style,noscript,svg').remove();let text=($('body').text()||'').replace(/\s+/g,' ').trim(),lower=text.toLocaleLowerCase('de');for(let keyword of keys){let needle=keyword.toLocaleLowerCase('de'),pos=0,n=0,first=-1;while((pos=lower.indexOf(needle,pos))!==-1){if(first<0)first=pos;n++;pos+=Math.max(1,needle.length);}if(n)j.results.push({domain:host,url:result.url,title,keyword,count:n,snippet:text.slice(Math.max(0,first-80),first+needle.length+110)});}await pause(250);}catch(e){records.get(url).status='error';records.get(url).indexability='Nicht prüfbar';s.errors++;log(j,host,url,'fetch',e.cause?.code||e.message);}}}finally{if(browser)await browser.close();summarize();}s.queued=q.length;s.state=j.cancel?'cancelled':s.checked>=limit&&q.length?'limit':'done';}
+$('link[rel="canonical"][href]').each((_,e)=>add($(e).attr('href'),result.url));collectImages($,base,result.url);$('script,style,noscript,svg').remove();let text=($('body').text()||'').replace(/\s+/g,' ').trim(),lower=text.toLocaleLowerCase('de');for(let keyword of keys){let needle=keyword.toLocaleLowerCase('de'),pos=0,n=0,first=-1;while((pos=lower.indexOf(needle,pos))!==-1){if(first<0)first=pos;n++;pos+=Math.max(1,needle.length);}if(n)j.results.push({domain:host,url:result.url,title,keyword,count:n,snippet:text.slice(Math.max(0,first-80),first+needle.length+110)});}await pause(250);}catch(e){records.get(url).status=e.failureType==='robots'?'blocked':e.failureType==='scope'?'excluded':'error';records.get(url).indexability='Nicht prüfbar';s.errors++;log(j,host,url,'fetch',e.cause?.code||e.message);}}}finally{if(browser)await browser.close();summarize();}s.state='images';await auditImages();s.queued=q.length;s.state=j.cancel?'cancelled':s.checked>=limit&&q.length?'limit':'done';}
 async function run(j,data){j.status='running';try{for(let domain of data.domains){if(j.cancel)break;try{await crawl(j,domain,j.task==='urls'?[]:data.keywords,data.maxPages,data.mode);}catch(e){log(j,domain,'','domain',e.message);j.stats.push({domain,checked:0,discovered:0,blocked:0,errors:1,queued:0,state:'error'});}}for(const page of j.pages){if(page.status!=='checked')continue;page.issues=[];if(!page.title)page.issues.push('Title fehlt');if(!page.description)page.issues.push('Description fehlt');if(!page.h1.length||page.h1.every(x=>!x))page.issues.push('H1 fehlt');if(page.h1.length>1)page.issues.push('Mehrere H1');}
 for(const key of ['title','description']){const groups=new Map();for(const page of j.pages){if(page.status!=='checked'||!page[key])continue;const value=page[key].toLocaleLowerCase('de').replace(/\s+/g,' ').trim();if(!groups.has(value))groups.set(value,[]);groups.get(value).push(page);}for(const group of groups.values()){if(new Set(group.map(p=>p.finalUrl||p.url)).size>1)for(const page of group)page.issues.push(key==='title'?'Title doppelt':'Description doppelt');}}
-j.status=j.cancel?'cancelled':'completed';}catch(e){j.status='failed';j.error=e.message;}j.completedAt=new Date().toISOString();}
-app.get('/api/health',(_,res)=>res.json({ok:true,version:'2.2.2'}));
-app.post('/api/scans',(req,res)=>{let {domains,keywords=[],maxPages=5000,mode,task='keywords',include=[],exclude=[]}=req.body||{};if(!Array.isArray(include)||!Array.isArray(exclude)||[...include,...exclude].some(p=>typeof p!=='string'||!p.trim()||p.length>500)||include.length+exclude.length>100)return res.status(400).json({error:'Maximal 100 URL-Filter mit je 1–500 Zeichen erlaubt'});if(!['urls','keywords'].includes(task))return res.status(400).json({error:'Ungültige Aufgabe'});if([...jobs.values()].filter(j=>['running','queued'].includes(j.status)).length>=2)return res.status(429).json({error:'Server beschäftigt'});if(!Array.isArray(domains)||!Array.isArray(keywords))return res.status(400).json({error:'Ungültige Eingabe'});domains=[...new Set(domains.map(String).map(s=>s.trim()).filter(Boolean))];keywords=[...new Set(keywords.map(String).map(s=>s.trim()).filter(Boolean))];maxPages=Number(maxPages);if(!domains.length||domains.length>5||(task==='keywords'&&!keywords.length)||keywords.length>30||keywords.some(k=>k.length>100)||!Number.isInteger(maxPages)||maxPages<1||maxPages>MAX)return res.status(400).json({error:'1–5 Domains, für Keyword-Scans 1–30 Keywords und 1–5000 Seiten erforderlich'});if(!['standard','hybrid','always'].includes(mode))mode='hybrid';let id=randomUUID(),j={id,task,include:include.map(p=>p.trim()),exclude:exclude.map(p=>p.trim()),pages:[],status:'queued',createdAt:new Date().toISOString(),completedAt:null,stats:[],results:[],logs:[],cancel:false,error:null};jobs.set(id,j);void run(j,{domains,keywords,maxPages,mode});res.status(202).json({id});});
+j.problems=buildProblems(j);j.status=j.cancel?'cancelled':'completed';}catch(e){j.status='failed';j.error=e.message;}j.completedAt=new Date().toISOString();}
+app.get('/api/health',(_,res)=>res.json({ok:true,version:'2.3.0'}));
+app.post('/api/scans',(req,res)=>{let {domains,keywords=[],maxPages=5000,mode,task='keywords',include=[],exclude=[],imageThresholdKb=200}=req.body||{};imageThresholdKb=Number(imageThresholdKb);if(!Number.isFinite(imageThresholdKb)||imageThresholdKb<10||imageThresholdKb>10000)return res.status(400).json({error:'Bildgrößen-Schwelle muss zwischen 10 und 10000 KB liegen'});if(!Array.isArray(include)||!Array.isArray(exclude)||[...include,...exclude].some(p=>typeof p!=='string'||!p.trim()||p.length>500)||include.length+exclude.length>100)return res.status(400).json({error:'Maximal 100 URL-Filter mit je 1–500 Zeichen erlaubt'});if(!['urls','keywords'].includes(task))return res.status(400).json({error:'Ungültige Aufgabe'});if([...jobs.values()].filter(j=>['running','queued'].includes(j.status)).length>=2)return res.status(429).json({error:'Server beschäftigt'});if(!Array.isArray(domains)||!Array.isArray(keywords))return res.status(400).json({error:'Ungültige Eingabe'});domains=[...new Set(domains.map(String).map(s=>s.trim()).filter(Boolean))];keywords=[...new Set(keywords.map(String).map(s=>s.trim()).filter(Boolean))];maxPages=Number(maxPages);if(!domains.length||domains.length>5||(task==='keywords'&&!keywords.length)||keywords.length>30||keywords.some(k=>k.length>100)||!Number.isInteger(maxPages)||maxPages<1||maxPages>MAX)return res.status(400).json({error:'1–5 Domains, für Keyword-Scans 1–30 Keywords und 1–5000 Seiten erforderlich'});if(!['standard','hybrid','always'].includes(mode))mode='hybrid';let id=randomUUID(),j={id,task,imageThresholdKb,images:[],problems:[],include:include.map(p=>p.trim()),exclude:exclude.map(p=>p.trim()),pages:[],status:'queued',createdAt:new Date().toISOString(),completedAt:null,stats:[],results:[],logs:[],cancel:false,error:null};jobs.set(id,j);void run(j,{domains,keywords,maxPages,mode});res.status(202).json({id});});
 app.get('/api/scans/:id',(req,res)=>{let j=jobs.get(req.params.id);if(!j)return res.status(404).json({error:'Scan nicht gefunden'});res.json(j);});
 app.post('/api/scans/:id/cancel',(req,res)=>{let j=jobs.get(req.params.id);if(!j)return res.status(404).json({error:'Scan nicht gefunden'});j.cancel=true;res.json({ok:true});});
 setInterval(()=>{for(let [id,j] of jobs)if(j.completedAt&&Date.now()-Date.parse(j.completedAt)>3600000)jobs.delete(id);},300000).unref();
-app.listen(process.env.PORT||3000,()=>console.log('Scanner 2.2.2 gestartet'));
+app.listen(process.env.PORT||3000,()=>console.log('Scanner 2.3.0 gestartet'));

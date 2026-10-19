@@ -1,15 +1,31 @@
 import dns from 'node:dns/promises';
 import assert from 'node:assert/strict';
-dns.lookup=async()=>[{address:'93.184.216.34',family:4}];
+dns.lookup=async host=>[{address:host==='private.invalid'?'127.0.0.1':'93.184.216.34',family:4}];
 const realFetch=globalThis.fetch,requests=[];
 const html=(body,headers={})=>new Response(body,{headers:{'content-type':'text/html',...headers}});
 globalThis.fetch=async(url,options)=>{
  if(String(url).startsWith('http://127.0.0.1:'))return realFetch(url,options);
  const u=new URL(url);requests.push(u.href);
- if(u.pathname==='/robots.txt')return new Response('User-agent: *\nDisallow: /private',{headers:{'content-type':'text/plain'}});
+ if(u.pathname==='/robots.txt')return new Response('User-agent: *\nDisallow: /private\nDisallow: /assets/blocked.png',{headers:{'content-type':'text/plain'}});
  if(u.pathname==='/sitemap.xml')return new Response('<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>',{headers:{'content-type':'application/xml'}});
  if(u.pathname==='/child.xml')return new Response('<urlset>'+['/project/sitemap-only','/project-2','/parent','/orphan','/deep','/only/a','/only/a?x=1','/only/skip','/only/redir'].map(p=>'<url><loc>https://example.com'+p+'</loc></url>').join('')+'</urlset>',{headers:{'content-type':'application/xml'}});
  if(u.pathname==='/sitemap_index.xml')return new Response('',{status:404});
+
+ if(u.pathname==='/audit')return html('<title>Audit</title><h1>Audit</h1><a href="/audit/dead">Dead</a><a href="/audit/server">Server</a><a href="/audit/start">Chain</a><a href="/audit/loop">Loop</a><a href="/audit/bad-location">Bad redirect</a><a href="/audit/chain-dead">Redirect to missing</a><a href="/audit/page2">Page 2</a><img src="/assets/big.png"><img src="/assets/empty.png" alt=""><img src="/assets/missing.png" alt="Missing"><img src="/assets/not-image.png" alt="Not image"><img src="https://cdn.example.com/assets/good.png" alt="CDN"><img data-src="/assets/lazy.png" alt="Lazy"><img srcset="/assets/variant.png 2x" alt="Responsive"><img src="https://private.invalid/secret.png" alt="Unsafe"><img src="/assets/blocked.png" alt="Blocked">');
+ if(u.pathname==='/audit/page2')return html('<h1>Page 2</h1><img src="/assets/big.png" alt="Big photo">');
+ if(u.pathname==='/audit/dead')return new Response('',{status:404});
+ if(u.pathname==='/audit/server')return new Response('',{status:503});
+ if(u.pathname==='/audit/start')return new Response('',{status:301,headers:{location:'/audit/middle'}});
+ if(u.pathname==='/audit/middle')return new Response('',{status:302,headers:{location:'/audit/end'}});
+ if(u.pathname==='/audit/end')return html('<title>End</title><h1>End</h1>');
+ if(u.pathname==='/audit/loop')return new Response('',{status:301,headers:{location:'/audit/loop2'}});
+ if(u.pathname==='/audit/loop2')return new Response('',{status:302,headers:{location:'/audit/loop'}});
+ if(u.pathname==='/audit/bad-location')return new Response('',{status:301});
+ if(u.pathname==='/audit/chain-dead')return new Response('',{status:302,headers:{location:'/audit/dead'}});
+ if(u.pathname==='/assets/missing.png')return new Response('',{status:404});
+ if(u.pathname==='/assets/not-image.png')return html('Wrong type');
+ if(u.pathname==='/assets/big.png')return new Response('x',{headers:{'content-type':'image/png','content-length':'300000'}});
+ if(u.pathname.startsWith('/assets/'))return new Response('image',{headers:{'content-type':'image/png'}});
  if(u.pathname==='/project'||u.pathname==='/project/')return html('<title>Project</title><body>Segeln<a href="/project/child">Child</a><a href="/project-2">Sibling prefix</a><a href="/">Home</a><a href="/parent">Parent</a><a href="/project/redirect">Redirect</a><link rel="canonical" href="/outside"></body>');
  if(u.pathname==='/project/child')return html('<h1>Child</h1><a href="/project/child/grandchild">Grandchild</a>');
  if(u.pathname==='/project/redirect')return new Response('',{status:302,headers:{location:'https://example.com/outside'}});
@@ -22,7 +38,7 @@ globalThis.fetch=async(url,options)=>{
 };
 process.env.PORT='3127';await import('../server.js');
 const post=body=>realFetch('http://127.0.0.1:3127/api/scans',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-async function job(body){let response=await post(body);assert.equal(response.status,202);let {id}=await response.json();for(let i=0;i<300;i++){let j=await (await realFetch('http://127.0.0.1:3127/api/scans/'+id)).json();if(j.status==='completed')return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timeout');}
+async function job(body){let response=await post(body);assert.equal(response.status,202);let {id}=await response.json();for(let i=0;i<600;i++){let j=await (await realFetch('http://127.0.0.1:3127/api/scans/'+id)).json();if(j.status==='completed')return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timeout');}
 try{
  assert.equal((await post({domains:['example.com']})).status,400);
  assert.equal((await post({task:'invalid',domains:['example.com']})).status,400);
@@ -64,6 +80,29 @@ try{
  assert(!requests.some(url=>new URL(url).pathname==='/'));
  const narrowed=await job({task:'urls',domains:['example.com/project'],exclude:['/project/child'],mode:'standard'});
  assert(!narrowed.pages.some(p=>p.url.includes('/child')));
+
+ requests.length=0;
+ const audited=await job({task:'urls',domains:['example.com/audit'],mode:'standard'});
+ const auditedPage=path=>audited.pages.find(p=>p.url==='https://example.com'+path);
+ assert.equal(auditedPage('/audit/dead').statusCode,404);assert.equal(auditedPage('/audit/server').finalStatusCode,503);
+ assert.deepEqual(auditedPage('/audit/dead').sourceUrls,['https://example.com/audit']);
+ assert.equal(auditedPage('/audit/start').statusCode,301);assert.equal(auditedPage('/audit/start').finalStatusCode,200);assert.equal(auditedPage('/audit/start').redirects.length,2);
+ assert.deepEqual(auditedPage('/audit/start').sourceUrls,['https://example.com/audit']);
+ assert.equal(auditedPage('/audit/chain-dead').statusCode,302);assert.equal(auditedPage('/audit/chain-dead').finalStatusCode,404);
+ assert.equal(auditedPage('/audit/loop').failureType,'redirect-loop');assert.equal(auditedPage('/audit/bad-location').failureType,'redirect-location');
+ const big=audited.images.find(i=>i.url.endsWith('/assets/big.png'));assert.equal(big.bytes,300000);assert(big.sizeExact);assert.equal(big.sources.length,2);assert.equal(big.missingAltSources.length,1);
+ assert.equal(audited.images.find(i=>i.url.endsWith('/assets/empty.png')).emptyAltSources.length,1);
+ assert.equal(audited.images.find(i=>i.url.endsWith('/assets/missing.png')).statusCode,404);
+ assert.equal(audited.images.find(i=>i.url.endsWith('/assets/not-image.png')).status,'not-image');
+ assert.equal(audited.images.find(i=>i.url.includes('cdn.example.com')).status,'checked');
+ assert(audited.images.some(i=>i.url.endsWith('/assets/lazy.png')));assert(audited.images.some(i=>i.url.endsWith('/assets/variant.png')));
+ assert.equal(audited.images.find(i=>i.url.includes('private.invalid')).status,'error');assert(!requests.some(url=>url.includes('private.invalid')));
+ assert.equal(audited.images.find(i=>i.url.endsWith('/assets/blocked.png')).status,'blocked');assert(!requests.some(url=>url.endsWith('/assets/blocked.png')));
+ for(const issue of ['HTTP 404','HTTP 503','Weiterleitungsschleife','Weiterleitung ohne gültiges Ziel','Weiterleitungskette (2 Schritte)','Alt-Attribut fehlt','Leerer Alt-Text – dekorativ?','Defektes Bild: HTTP 404'])assert(audited.problems.some(p=>p.issue===issue),issue);
+ assert(audited.problems.some(p=>p.issue.startsWith('Große Bilddatei')&&p.sources.length===2));
+ assert.equal(audited.problems[0].priority,'Hoch');
+ assert.equal((await post({task:'urls',domains:['example.com'],imageThresholdKb:-1})).status,400);
+ console.log('PASS: HTTP status, redirect chains/loops/invalid targets, exact link sources, image alt/size/CDN/lazy/srcset, blocked/private assets and priority tasks');
  console.log('PASS: SEO metadata, missing/duplicate fields, meta/header noindex, real link depths, sitemap orphans, unique incoming/outgoing links, robots, include/exclude/wildcards, redirect scope, page limits keyword regression and automatic subpath boundaries (both modes, trailing slash, redirects, sitemap and canonical)');
  process.exit(0);
 }catch(e){console.error(e);process.exit(1);}
