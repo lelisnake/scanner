@@ -1,1 +1,18 @@
-{"name":"domain-keyword-scanner","version":"1.0.0","type":"module","scripts":{"start":"node server.js"},"dependencies":{"cheerio":"^1.0.0","express":"^4.21.2","robots-parser":"^3.0.1"},"engines":{"node":">=20"}}
+{
+  "name": "domain-keyword-scanner",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2",
+    "robots-parser": "^3.0.1",
+    "playwright": "1.56.1"
+  }
+}
