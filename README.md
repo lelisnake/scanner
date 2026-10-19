@@ -36,3 +36,9 @@ Unter „Crawl eingrenzen“ können bis zu 100 Ein-/Ausschlussmuster eingetrage
 SEO CSV exportiert alle gefundenen Seiten mit Metadaten, Prüfstatus, Hinweisen, Tiefe und verlinkenden Quellen. Interne Links CSV exportiert eindeutige Quell-/Zielpaare. Die URL-Ansicht ist auf 100 Ergebnisse pro Seite aufgeteilt; im Keyword-Modus zeigt die zusätzliche SEO-Tabelle eine Vorschau der ersten 100 gefilterten Seiten. CSV enthält die vollständigen Daten.
 
 Prüfung: npm run check und npm test (lokale Testwebsite mit simulierten HTTP-/DNS-Antworten; UI-Logiktest ohne Browser).
+
+## Automatischer Unterseitenbereich (2.2.1)
+
+Eine Start-URL mit Pfad beschränkt beide Scan-Modi automatisch auf diese Seite und alle darunterliegenden Pfade. Beispiel: https://www.bonava.de/immobilien/berliner-umland/wildau/finkengarten erfasst die Projektseite und /finkengarten/...; Elternseiten, andere Projekte und /finkengarten-2 werden ausgeschlossen. Dies gilt für Sitemap-Funde, HTML-Links, Canonicals und Seitenweiterleitungen. Mit und ohne abschließenden Schrägstrich gilt derselbe Bereich. Zusätzliche Ein-/Ausschlussfilter können ihn weiter einschränken. Die reine Domain crawlt weiterhin die gesamte Website. Sitemap- und robots.txt-Dateien dürfen zur Ermittlung außerhalb des Seitenbereichs gelesen werden.
+
+Die Klicktiefe wird jetzt relativ zur eingegebenen Start-URL berechnet (0), beim Domain-Crawl weiterhin relativ zur Startseite. Der Fortschritt nennt die Start-URL.
