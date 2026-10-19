@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: domain-keyword-scanner
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
