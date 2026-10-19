@@ -1,29 +1,48 @@
 import dns from 'node:dns/promises';
 import assert from 'node:assert/strict';
 dns.lookup=async()=>[{address:'93.184.216.34',family:4}];
-const realFetch=globalThis.fetch;
+const realFetch=globalThis.fetch,requests=[];
+const html=(body,headers={})=>new Response(body,{headers:{'content-type':'text/html',...headers}});
 globalThis.fetch=async(url,options)=>{
  if(String(url).startsWith('http://127.0.0.1:'))return realFetch(url,options);
- const u=new URL(url);
+ const u=new URL(url);requests.push(u.href);
  if(u.pathname==='/robots.txt')return new Response('User-agent: *\nDisallow: /private',{headers:{'content-type':'text/plain'}});
  if(u.pathname==='/sitemap.xml')return new Response('<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>',{headers:{'content-type':'application/xml'}});
- if(u.pathname==='/child.xml')return new Response('<urlset><url><loc>https://example.com/map-page</loc></url></urlset>',{headers:{'content-type':'application/xml'}});
+ if(u.pathname==='/child.xml')return new Response('<urlset>'+['/orphan','/deep','/only/a','/only/a?x=1','/only/skip','/only/redir'].map(p=>'<url><loc>https://example.com'+p+'</loc></url>').join('')+'</urlset>',{headers:{'content-type':'application/xml'}});
  if(u.pathname==='/sitemap_index.xml')return new Response('',{status:404});
- return new Response('<title>Test</title><body>Segeln segeln<a href="/linked#part">Link</a><a href="/linked">Duplicate</a><a href="/private">Private</a><a href="https://other.com/out">External</a></body>',{headers:{'content-type':'text/html'}});
+ if(u.pathname==='/only/redir')return new Response('',{status:302,headers:{location:'https://example.com/outside'}});
+ if(u.pathname==='/')return html('<title>Home</title><meta name="description" content="Home desc"><body><h1>Home</h1>Segeln segeln<a href="/linked#part">Link</a><a href="/linked">Duplicate</a><a href="/private">Private</a><a href="https://other.com/out">External</a></body>');
+ if(u.pathname==='/linked')return html('<title>Duplicate title</title><meta name="description" content="Duplicate desc"><h1>First</h1><h1>Second</h1><a href="/deep">Deep</a><a href="/deep">Duplicate link</a>');
+ if(u.pathname==='/deep')return html('<title>Duplicate title</title><meta name="description" content="Duplicate desc"><meta name="robots" content="noindex, follow"><link rel="canonical" href="/linked"><h1>Deep</h1>');
+ if(u.pathname==='/orphan')return html('<body>No metadata</body>',{'x-robots-tag':'noindex'});
+ return html('<title>Other</title><h1>Other</h1>');
 };
-process.env.PORT='3127';
-await import('../server.js');
+process.env.PORT='3127';await import('../server.js');
 const post=body=>realFetch('http://127.0.0.1:3127/api/scans',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-async function job(body){let response=await post(body);assert.equal(response.status,202);let {id}=await response.json();for(let i=0;i<100;i++){let j=await (await realFetch('http://127.0.0.1:3127/api/scans/'+id)).json();if(j.status==='completed')return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timeout');}
+async function job(body){let response=await post(body);assert.equal(response.status,202);let {id}=await response.json();for(let i=0;i<300;i++){let j=await (await realFetch('http://127.0.0.1:3127/api/scans/'+id)).json();if(j.status==='completed')return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timeout');}
 try{
  assert.equal((await post({domains:['example.com']})).status,400);
  assert.equal((await post({task:'invalid',domains:['example.com']})).status,400);
+ assert.equal((await post({task:'urls',domains:['example.com'],include:'bad'})).status,400);
  let urls=await job({task:'urls',domains:['example.com'],mode:'standard'});
- assert.equal(urls.task,'urls');assert.equal(new Set(urls.results.map(x=>x.url)).size,urls.results.length);
- for(let path of ['/','/map-page','/linked','/private'])assert(urls.results.some(x=>x.url==='https://example.com'+path));
- assert(!urls.results.some(x=>x.url.includes('other.com')));assert.equal(urls.stats[0].blocked,1);
+ assert.equal(new Set(urls.results.map(x=>x.url)).size,urls.results.length);
+ const page=path=>urls.pages.find(x=>x.url==='https://example.com'+path);
+ assert.equal(page('/').depth,0);assert.equal(page('/linked').depth,1);assert.equal(page('/deep').depth,2);assert.equal(page('/orphan').depth,null);
+ assert.deepEqual(page('/deep').incoming,['https://example.com/linked']);assert.equal(page('/linked').incomingCount,1);
+ assert.equal(page('/linked').outgoingCount,1);assert.equal(page('/linked').h1.length,2);
+ assert.equal(page('/deep').canonical,'https://example.com/linked');assert.equal(page('/deep').indexability,'noindex');assert.equal(page('/orphan').indexability,'noindex');
+ assert(page('/linked').issues.includes('Title doppelt'));assert(page('/deep').issues.includes('Description doppelt'));assert(page('/linked').issues.includes('Mehrere H1'));
+ for(const issue of ['Title fehlt','Description fehlt','H1 fehlt'])assert(page('/orphan').issues.includes(issue));
+ assert.equal(page('/private').status,'blocked');assert(!urls.pages.some(x=>x.url.includes('other.com')));
+ requests.length=0;
+ const filtered=await job({task:'urls',domains:['example.com'],mode:'standard',include:['/only/'],exclude:['/only/skip','*?*']});
+ assert(filtered.pages.some(x=>x.url.endsWith('/only/a')));assert(filtered.pages.every(x=>new URL(x.url).pathname.startsWith('/only/')));
+ assert(!filtered.pages.some(x=>x.url.includes('?')||x.url.endsWith('/skip')));
+ assert(!requests.some(x=>x.endsWith('/outside')||x.endsWith('/skip')||x.includes('?')||x==='https://example.com/'));
+ assert(filtered.pages.every(x=>x.depth===null));
+ const fullUrl=await job({task:'urls',domains:['example.com'],mode:'standard',include:['https://example.com/only/a'],exclude:['*?*']});assert.equal(fullUrl.pages.length,1);
  let limited=await job({task:'urls',domains:['example.com'],maxPages:1,mode:'standard'});assert.equal(limited.stats[0].state,'limit');assert.equal(limited.stats[0].checked,1);
- let keywords=await job({domains:['example.com'],keywords:['Segeln'],maxPages:1,mode:'standard'});assert.equal(keywords.results[0].count,2);
- console.log('PASS: URL-only API, recursive sitemap, links, deduplication, domain scope, robots, page limit, keyword regression');
+ let keywords=await job({domains:['example.com'],keywords:['Segeln'],maxPages:1,mode:'standard'});assert.equal(keywords.results[0].count,2);assert.equal(keywords.pages[0].title,'Home');
+ console.log('PASS: SEO metadata, missing/duplicate fields, meta/header noindex, real link depths, sitemap orphans, unique incoming/outgoing links, robots, include/exclude/wildcards, redirect scope, page limits and keyword regression');
  process.exit(0);
 }catch(e){console.error(e);process.exit(1);}

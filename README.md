@@ -24,3 +24,15 @@ Nur für vertrauenswürdige Bediener bereitstellen; vor öffentlicher Freigabe A
 **URLs crawlen:** Domain eingeben, Crawl starten und gefundene Seiten-URLs filtern oder als CSV exportieren. Keywords sind nicht erforderlich. Standardlimit: 5000 geprüfte Seiten. Die Liste enthält auch entdeckte, noch nicht geprüfte URLs; sie ist keine Garantie für Erreichbarkeit oder Vollständigkeit.
 
 **Keyword scannen:** Bisherige Keyword-Suche mit Trefferzahl und Textausschnitten. Beide Modi nutzen denselben Crawler und respektieren robots.txt.
+
+## SEO, interne Links und Crawl-Bereiche (2.2)
+
+Beide Modi erfassen für jede gefundene URL Title, Meta-Description, alle H1, Canonical, Robots-Angaben und eine vorläufige Indexierbarkeitsbewertung. Fehlende Titles, Descriptions und H1 sowie doppelte Titles/Descriptions und mehrere H1 werden markiert. Duplikate werden am Scanende unter den geprüften Seiten ermittelt. noindex wird aus Robots-/Googlebot-Meta und X-Robots-Tag gelesen. Die Bewertung bestätigt keine tatsächliche Suchmaschinenindexierung.
+
+Die Linkanalyse zeigt eindeutige eingehende Quellseiten, ausgehende Zielseiten und die kürzeste gefundene Klicktiefe von der Domain-Startseite (0). Sitemap- und Canonical-Einträge zählen nicht als interne Verlinkung. Weiterleitungen werden für die Pfadberechnung zusammengeführt. Auch nofollow-Links werden gezählt. Bei nicht gefundener Verbindung bleibt die Tiefe unbekannt. Linkwerte werden am Ende des Domain-Crawls berechnet; bei eingeschränkten oder abgebrochenen Scans sind sie unvollständig.
+
+Unter „Crawl eingrenzen“ können bis zu 100 Ein-/Ausschlussmuster eingetragen werden, eines pro Zeile. Pfade oder vollständige URLs gelten als Präfix, * steht für beliebige Zeichen. Beispiel: nur /segelkurse/; ausschließen /kalender/ und *?* (alle URLs mit Parametern). Ausschlüsse haben Vorrang. Seiten außerhalb des Bereichs werden auch nach Weiterleitungen nicht geladen; Sitemap- und robots.txt-Abfragen sind zur Ermittlung weiterhin erforderlich. Ohne Verbindung zur ausgeschlossenen Startseite ist keine Klicktiefe bekannt.
+
+SEO CSV exportiert alle gefundenen Seiten mit Metadaten, Prüfstatus, Hinweisen, Tiefe und verlinkenden Quellen. Interne Links CSV exportiert eindeutige Quell-/Zielpaare. Die URL-Ansicht ist auf 100 Ergebnisse pro Seite aufgeteilt; im Keyword-Modus zeigt die zusätzliche SEO-Tabelle eine Vorschau der ersten 100 gefilterten Seiten. CSV enthält die vollständigen Daten.
+
+Prüfung: npm run check und npm test (lokale Testwebsite mit simulierten HTTP-/DNS-Antworten; UI-Logiktest ohne Browser).
