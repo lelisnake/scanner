@@ -11,6 +11,18 @@ globalThis.fetch=async(url,options)=>{
  if(u.pathname==='/child.xml')return new Response('<urlset>'+['/project/sitemap-only','/project-2','/parent','/orphan','/deep','/only/a','/only/a?x=1','/only/skip','/only/redir'].map(p=>'<url><loc>https://example.com'+p+'</loc></url>').join('')+'</urlset>',{headers:{'content-type':'application/xml'}});
  if(u.pathname==='/sitemap_index.xml')return new Response('',{status:404});
 
+
+ if(u.pathname==='/links')return html('<title>Links</title><h1>Links</h1><a href="/links/gone">Gelöschte Wohnung</a><a href="/links/redirect">Alte Kampagne</a><a href="/downloads/expose.pdf">Exposé PDF</a><a href="https://partner.example/missing">Partnerangebot</a><a href="/links/soft">Wohnung</a><a href="/links/article">404-Fachartikel</a><a href="/links/restricted">Intern</a><a href="/links/parent">Elternseite</a><img src="/assets/missing.png" alt="Projektfoto">');
+ if(u.pathname==='/links/parent')return html('<a href="/links/gone">Anderer Linktext</a>');
+ if(u.pathname==='/links/gone')return new Response('',{status:404});
+ if(u.pathname==='/links/redirect')return new Response('',{status:301,headers:{location:'/links/gone'}});
+ if(u.pathname==='/links/restricted')return new Response('',{status:403});
+ if(u.pathname==='/downloads/expose.pdf')return new Response('',{status:404,headers:{'content-type':'application/pdf'}});
+ if(u.hostname==='partner.example'&&u.pathname==='/missing')return new Response('',{status:410});
+ if(u.pathname==='/links/soft')return html('<title>Seite nicht gefunden | Beispiel</title><h1>Seite nicht gefunden</h1>');
+ if(u.pathname==='/links/article')return html('<title>Wie behebt man HTTP-404-Fehler?</title><h1>404-Fehler verstehen</h1><p>Ein normaler Fachartikel über SEO.</p>');
+ if(u.pathname==='/old-campaign')return html('<title>Page not found</title><a href="/must-not-crawl">Not a crawler</a>');
+ if(u.pathname==='/old.pdf')return new Response('pdf',{headers:{'content-type':'application/pdf'}});
  if(u.pathname==='/audit')return html('<link rel="icon" href="/assets/site.ico"><title>Audit</title><h1>Audit</h1><a href="/audit/dead">Dead</a><a href="/audit/server">Server</a><a href="/audit/start">Chain</a><a href="/audit/loop">Loop</a><a href="/audit/bad-location">Bad redirect</a><a href="/audit/chain-dead">Redirect to missing</a><a href="/audit/page2">Page 2</a><img src="/assets/big.png"><img src="/assets/empty.png" alt=""><img src="/assets/missing.png" alt="Missing"><img src="/assets/not-image.png" alt="Not image"><img src="https://cdn.example.com/assets/good.png" alt="CDN"><img data-src="/assets/lazy.png" alt="Lazy"><img srcset="/assets/variant.png 2x" alt="Responsive"><img src="https://private.invalid/secret.png" alt="Unsafe"><img src="/assets/blocked.png" alt="Blocked">');
  if(u.pathname==='/audit/page2')return html('<h1>Page 2</h1><img src="/assets/big.png" alt="Big photo">');
  if(u.pathname==='/audit/dead')return new Response('',{status:404});
@@ -111,6 +123,29 @@ try{
  assert.equal(minimal.configuration.domains[0],'example.com/audit');assert.equal(minimal.seoAudit,false);
  assert.equal((await post({task:'urls',domains:['not a url']})).status,400);
  assert.equal((await post({task:'urls',domains:['example.com'],seoAudit:'false'})).status,400);
+
+ requests.length=0;
+ const links=await job({task:'urls',domains:['example.com/links'],mode:'standard',brokenAudit:true,seoAudit:false,imageAudit:false});
+ const target=url=>links.brokenLinks.find(r=>r.url===url);
+ assert.equal(target('https://example.com/links/gone').finalStatusCode,404);
+ assert.deepEqual(target('https://example.com/links/gone').linkTexts.sort(),['Anderer Linktext','Gelöschte Wohnung']);
+ assert.equal(target('https://example.com/downloads/expose.pdf').kind,'Datei');
+ assert.equal(target('https://example.com/assets/missing.png').kind,'Bild');assert.equal(target('https://example.com/assets/missing.png').finalStatusCode,404);
+ assert.equal(target('https://example.com/links/redirect').statusCode,301);assert.equal(target('https://example.com/links/redirect').finalStatusCode,404);
+ assert.equal(target('https://example.com/links/soft').soft404,true);assert(target('https://example.com/links/soft').reasons.length);
+ assert.equal(target('https://example.com/links/article').soft404,false);
+ assert.equal(target('https://partner.example/missing').status,'excluded');assert(!requests.some(url=>new URL(url).hostname==='partner.example'));
+ assert.equal(target('https://example.com/links/restricted').priority,'Mittel');
+ const external=await job({task:'urls',domains:['example.com/links'],mode:'standard',brokenAudit:true,externalLinks:true,seoAudit:false,imageAudit:false});
+ assert.equal(external.brokenLinks.find(r=>r.url==='https://partner.example/missing').finalStatusCode,410);
+ requests.length=0;
+ const imported=await job({task:'links',importedUrls:['https://example.com/old-campaign','https://example.com/old.pdf','https://private.invalid/secret'],brokenAudit:true,seoAudit:false,imageAudit:false});
+ assert.equal(imported.pages.length,0);assert.equal(imported.brokenLinks.length,3);
+ assert(imported.brokenLinks.find(r=>r.url.endsWith('/old-campaign')).soft404);
+ assert.equal(imported.brokenLinks.find(r=>r.url.includes('private.invalid')).status,'error');
+ assert(!requests.some(url=>url.includes('private.invalid')||url.endsWith('/must-not-crawl')));
+ assert.equal((await post({task:'links',importedUrls:['javascript:alert(1)']})).status,400);
+ console.log('PASS: broken links with paired link texts/sources, files, optional external targets, soft-404 hints, nonrecursive import and private-address protection');
  console.log('PASS: HTTP status, redirect chains/loops/invalid targets, exact link sources, image alt/size/CDN/lazy/srcset, blocked/private assets and priority tasks');
  console.log('PASS: SEO metadata, missing/duplicate fields, meta/header noindex, real link depths, sitemap orphans, unique incoming/outgoing links, robots, include/exclude/wildcards, redirect scope, page limits keyword regression and automatic subpath boundaries (both modes, trailing slash, redirects, sitemap and canonical)');
  process.exit(0);

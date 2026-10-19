@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseKeywords,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates} from '../public/ui-core.js';
+import {parseKeywords,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates,parseURLImport} from '../public/ui-core.js';
 assert.deepEqual(parseKeywords('Segeln\nUmwelt,Segeln;Grün'),['Segeln','Umwelt','Grün']);
 assert(validateDomains(['bad input']));assert(validateDomains([]));assert(validateDomains(['http://user:pass@example.com']));
 assert.equal(validateDomains(['bonava.de','https://www.bonava.de/project']), '');
@@ -19,3 +19,8 @@ console.log('PASS: scope preview, keyword lists, validation, grouped tasks, filt
 assert.deepEqual(faviconCandidates('https://www.bonava.de/project','/custom.png'),['https://www.bonava.de/custom.png','https://www.bonava.de/favicon.ico']);
 assert.deepEqual(faviconCandidates('bonava.de','https://tracker.example/icon'),['https://bonava.de/favicon.ico']);
 assert.deepEqual(faviconCandidates('bonava.de','javascript:alert(1)'),['https://bonava.de/favicon.ico']);
+
+assert.deepEqual(parseURLImport('URL;Description\n"https://example.com/old";"Text mit\nZeilenumbruch"\n"https://example.com/file.pdf";"PDF"').urls,['https://example.com/old','https://example.com/file.pdf']);
+assert.equal(parseURLImport('URL\nhttps://example.com/old\nhttps://example.com/old#section').urls.length,1);
+assert.equal(parseURLImport('https://example.com/ok\nftp://example.com/bad').invalid,1);
+assert.equal(progressState({phase:'links',linkProgress:{checked:1,total:2}}).percent,50);

@@ -8,7 +8,7 @@ let browser;
 const id='12345678-1234-1234-1234-123456789012';
 const root='https://www.bonava.de/immobilien/finkengarten';
 const pageRecord={url:root,status:'checked',title:'Projekt Finkengarten',description:'Wohnen in Wildau',h1:['Finkengarten'],canonical:root,indexability:'Potenziell indexierbar',statusCode:200,finalStatusCode:200,sourceUrls:[root+'/nachbar'],incomingCount:1,outgoingCount:3,depth:0,issues:['Description doppelt']};
-let job={id,status:'running',phase:'pages',task:'keywords',configuration:{domains:[root],keywords:['Segeln','Natur'],maxPages:5000,mode:'hybrid'},seoAudit:true,imageAudit:true,stats:[{discovered:2,processed:1,checked:1,queued:1,state:'pages'}],pages:[pageRecord],results:[{url:root,keyword:'Natur',count:2,snippet:'Natur genießen',title:'Projekt'}],images:[],problems:[],logs:[],createdAt:new Date().toISOString()};
+let job={id,status:'running',phase:'pages',task:'keywords',configuration:{domains:[root],keywords:['Segeln','Natur'],maxPages:5000,mode:'hybrid'},seoAudit:true,imageAudit:true,stats:[{startUrl:root,domain:'www.bonava.de',discovered:2,processed:1,checked:1,queued:1,state:'pages'}],pages:[pageRecord],results:[{url:root,keyword:'Natur',count:2,snippet:'Natur genießen',title:'Projekt'}],images:[],problems:[],logs:[],createdAt:new Date().toISOString()};
 let body,gets=0,expired=false,networkFailure=false;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(origin+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,30));}
@@ -43,6 +43,12 @@ try{
  await page.waitForFunction(()=>document.querySelector('#rows dd')&&document.querySelector('#rows').textContent.includes('Neue Beschreibung'));
  assert(await page.locator('#rows details > summary').first().evaluate(el=>el===document.activeElement&&el.parentElement.open),'changed row must preserve open details and keyboard focus');
  job={...job,status:'completed',phase:'done',completedAt:new Date().toISOString(),stats:[{discovered:2,processed:2,checked:2,queued:0,state:'done'}],problems:[{priority:'Hoch',category:'HTTP',issue:'HTTP 404',url:root+'/1',sources:[root],recommendation:'Link korrigieren'},{priority:'Hoch',category:'HTTP',issue:'HTTP 404',url:root+'/2',sources:[root],recommendation:'Link korrigieren'}],images:[{url:'https://example.com/pic.png',status:'checked',statusCode:200,bytes:300000,sizeExact:true,missingAltSources:[root],sources:[root]}]};
+
+ job.brokenAudit=true;job.brokenLinks=[
+ {url:root+'/expose.pdf',kind:'Datei',status:'checked',statusCode:404,finalStatusCode:404,issue:'HTTP 404',priority:'Hoch',recommendation:'Link korrigieren',sources:[root,root+'/zweite'],occurrences:[{source:root,text:'Exposé herunterladen'},{source:root+'/zweite',text:'Preisliste'}],linkTexts:['Exposé herunterladen','Preisliste'],redirects:[],reasons:[]},
+ {url:root+'/soft',kind:'Seite',status:'checked',statusCode:200,finalStatusCode:200,issue:'Soft-404-Verdacht (HTTP 200)',priority:'Hinweis',soft404:true,reasons:['H1: Seite nicht gefunden'],sources:[root],occurrences:[{source:root,text:'Wohnung'}]},
+ {url:root+'/ok',kind:'Seite',status:'checked',statusCode:200,finalStatusCode:200,issue:'',sources:[],occurrences:[]}
+ ];
  await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();
  await page.locator('[data-view="problems"]').click();
  assert.equal(await page.locator('#groups details.issue-group').count(),1);
@@ -56,6 +62,14 @@ try{
  await page.keyboard.press('Escape');await page.locator('#resetFilters').click();
  await page.locator('#exportToggle').click();const downloadPromise=page.waitForEvent('download');await page.locator('#exportFiltered').click();const download=await downloadPromise;
  const csv=await readFile(await download.path(),'utf8');assert(csv.includes(root));assert(csv.includes('Projekt Finkengarten'));
+
+ await page.locator('[data-view="broken"]').click();assert.equal(await page.locator('#rows > tr').count(),2);
+ await page.locator('#kind').selectOption('404');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('#rows details > summary').first().click();assert((await page.locator('#rows').innerText()).includes('Exposé herunterladen'));assert((await page.locator('#rows').innerText()).includes('Preisliste'));
+ await page.locator('#exportToggle').click();const brokenDownloadPromise=page.waitForEvent('download');await page.locator('#exportFiltered').click();const brokenDownload=await brokenDownloadPromise;
+ const brokenCSV=await readFile(await brokenDownload.path(),'utf8');assert(brokenCSV.includes('Exposé herunterladen'));assert(brokenCSV.includes('Preisliste'));assert.equal(brokenCSV.split('\r\n').length,3);
+ await page.locator('#kind').selectOption('soft');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('#kind').selectOption('');assert.equal(await page.locator('#rows > tr').count(),3);
  await page.locator('#newScan').click();await page.locator('#urlsTab').click();
  assert((await page.locator('#resultTitle').innerText()).includes('Keyword-Scan'),'draft mode must not relabel previous results');
  await page.reload();await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();
@@ -77,6 +91,16 @@ try{
  await page.locator('#cancel').click();await page.locator('#phase').filter({hasText:'Gestoppt'}).waitFor();assert((await page.locator('#scanWarning').innerText()).includes('Teilergebnis'));
  job={...job,status:'running',phase:'pages',completedAt:null};await page.locator('#newScan').click();await page.locator('#scan').click();await page.locator('#phase').filter({hasText:'Seiten prüfen'}).waitFor();
  expired=true;await page.locator('#phase').filter({hasText:'Fehlgeschlagen'}).waitFor();assert((await page.locator('#scanWarning').innerText()).includes('lokales Teilergebnis'));
+
+ expired=false;
+ await page.locator('#linksTab').click();assert.equal(await page.locator('#domainFields').isVisible(),false);
+ await page.locator('#importFile').setInputFiles({name:'alte-urls.csv',mimeType:'text/csv',buffer:Buffer.from('URL;Notiz\nhttps://example.com/old;Alt\nhttps://example.com/expose.pdf;PDF')});
+ await page.locator('#importCount').filter({hasText:'2 gültige URLs'}).waitFor();
+ job={...job,task:'links',status:'completed',phase:'done',configuration:{domains:[],keywords:[],maxPages:5000},importedUrls:['https://example.com/old','https://example.com/expose.pdf'],stats:[],pages:[],results:[],seoAudit:false,imageAudit:false,completedAt:new Date().toISOString()};
+ await page.locator('#scan').click();await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();
+ assert.equal(body.task,'links');assert.equal(body.importedUrls.length,2);assert.deepEqual(body.domains,[]);assert.equal(body.imageAudit,false);
+ assert((await page.locator('#resultTitle').innerText()).includes('URL-Listenprüfung'));
+ console.log('PASS: broken-link tab, 404/soft filters, paired source/link-text CSV and file-import-only workflow');
  assert.deepEqual(errors,[]);
  console.log('PASS: real Chromium desktop/mobile, inline validation, keyword chips, optional audits, stable details during polling, grouped tasks, filter reset, filtered CSV, draft/result separation, resume/expiry, connection recovery and cancellation');
 }finally{await browser?.close();server.kill();}
