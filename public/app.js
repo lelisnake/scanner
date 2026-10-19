@@ -1,9 +1,11 @@
+import {createStructure} from './structure.js';
 import {filterDefinitions,applyTabFilters,facetOptions,defaultFacets} from './filters.js';
 import {terminal,stateName,parseKeywords,parseDomains,validateDomains,scopeDescription,groupProblems,filterRecords,csvText,progressState,faviconCandidates,parseURLImport} from './ui-core.js';
 const $=id=>document.getElementById(id), fields=['domains','max','mode','include','exclude','imageThreshold','importUrls'];
 const state={task:'urls',keywords:[],last:null,id:null,view:'overview',timer:null,polling:false,cancelling:false,finished:null,filters:{},rowCache:new Map(),groupCache:new Map()};
 const defaults=()=>({search:'',facets:{},sort:'default',page:0,size:50});
 const facetCache=new Map();
+const structure=createStructure($('structurePanel'));
 const filter=()=>state.filters[state.view]||(state.filters[state.view]={...defaults(),facets:defaultFacets(state.view)});
 const store={get(key){try{return JSON.parse(localStorage.getItem(key));}catch{return null;}},set(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const lines=id=>$(id).value.split(/\n/).map(s=>s.trim()).filter(Boolean);
@@ -35,7 +37,7 @@ function configuration(){
 $('scanForm').onsubmit=async e=>{
  e.preventDefault();if(state.id&&!terminal(state.last))return;const data=configuration();if(!data)return;showNotice('');saveDraft();$('scan').disabled=true;$('settings').disabled=true;
  try{const response=await fetch('/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),body=await response.json();if(!response.ok)throw Error(body.error||'Der Scan konnte nicht gestartet werden.');
- clearTimeout(state.timer);state.id=body.id;state.cancelling=false;state.finished=null;state.filters={};facetCache.clear();$('dataPanel').dataset.view='';state.rowCache.clear();state.groupCache.clear();state.view='overview';store.set('scanner-current-v3',body.id);
+ clearTimeout(state.timer);state.id=body.id;state.cancelling=false;state.finished=null;structure.reset();state.filters={};facetCache.clear();$('dataPanel').dataset.view='';state.rowCache.clear();state.groupCache.clear();state.view='overview';store.set('scanner-current-v3',body.id);
  state.last={id:body.id,status:'queued',phase:'queued',task:data.task,configuration:data,seoAudit:data.seoAudit,imageAudit:data.imageAudit,imageThresholdKb:data.imageThresholdKb,include:data.include,exclude:data.exclude,stats:[],pages:[],results:[],problems:[],images:[],brokenAudit:data.brokenAudit,externalLinks:data.externalLinks,importedUrls:data.importedUrls,brokenLinks:[],logs:[],createdAt:new Date().toISOString()};
  $('setup').hidden=true;render();$('runTitle').focus();await poll();
  }catch(err){showNotice(err.message);}finally{$('scan').disabled=false;$('settings').disabled=false;}
@@ -58,7 +60,7 @@ function details(label){const el=document.createElement('details');el.append(tex
 function sources(parent,urls){const list=[...new Set(urls||[])];if(!list.length){parent.append(text('p',!terminal(state.last)?'Quellseiten werden nach dem Seiten-Crawl ausgewertet.':'Keine verlinkende Quellseite im geprüften Bereich gefunden.','muted small'));return;}const el=details(list.length+' verlinkende Quellseite(n)');for(const url of list)el.append(link(url));parent.append(el);}
 function definition(parent,values){const dl=document.createElement('dl');for(const [label,value] of values){dl.append(text('dt',label),text('dd',value===null||value===undefined||value===''?'–':Array.isArray(value)?value.join('\n'):String(value)));}parent.append(dl);}
 function view(name){state.view=name;filter();applyFilters();renderView();}
-for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>view(button.dataset.view);
+for(const button of document.querySelectorAll('button[data-view]'))button.onclick=()=>view(button.dataset.view);
 const viewLabels={overview:'Übersicht',problems:'SEO-Aufgaben',pages:'URLs & SEO',keywords:'Keyword-Treffer',http:'HTTP & Weiterleitungen',images:'Bilder',broken:'Defekte Links'};
 function scanName(task){return task==='links'?'URL-Listenprüfung':task==='keywords'?'Keyword-Scan':'URL-Crawl';}
 function faviconHost(url){try{return new URL(/^https?:\/\//i.test(url)?url:'https://'+url).hostname;}catch{return '';}}
@@ -73,7 +75,7 @@ function render(){
  const progress=progressState(j);$('phase').textContent=progress.label;$('progressDetail').textContent=progress.detail;if(progress.percent===null)$('progress').removeAttribute('value');else $('progress').value=progress.percent;
  const seconds=Math.max(0,Math.floor(((j.completedAt?Date.parse(j.completedAt):Date.now())-Date.parse(j.createdAt))/1000));$('elapsed').textContent=Math.floor(seconds/60)+' Min '+seconds%60+' Sek';
  $('scanWarning').hidden=!(progress.partial||j.error);const limits=[];const linkUnchecked=(j.brokenLinks||[]).filter(r=>['queued','blocked','error'].includes(r.status)||r.bodyTruncated).length;if(linkUnchecked)limits.push(linkUnchecked+' Linkziele nicht vollständig prüfbar');if(j.linkLimit)limits.push('Limit von 5000 Linkzielen erreicht');if(j.status==='cancelled')limits.push('Scan wurde gestoppt');for(const stat of j.stats||[]){if(stat.state==='limit')limits.push('Seitenlimit erreicht: '+stat.domain);if(stat.imageLimit)limits.push('Limit von 500 Bild-URLs erreicht: '+stat.domain);if(stat.state==='error')limits.push('Website nicht erreichbar: '+stat.domain);if(stat.blocked)limits.push(stat.blocked+' URLs durch robots.txt blockiert');if(stat.errors)limits.push(stat.errors+' Abruffehler');}$('scanWarning').textContent=j.error||'Teilergebnis: '+limits.join(' · ')+'. Die Auswertung kann unvollständig sein.';
- for(const button of document.querySelectorAll('[data-view]')){button.hidden=button.dataset.view==='keywords'&&j.task!=='keywords'||button.dataset.view==='images'&&!j.imageAudit;}
+ for(const button of document.querySelectorAll('button[data-view]')){button.hidden=button.dataset.view==='keywords'&&j.task!=='keywords'||button.dataset.view==='images'&&!j.imageAudit;}
  if(state.view==='keywords'&&j.task!=='keywords'||state.view==='images'&&!j.imageAudit)state.view='overview';
  $('resultTitle').textContent='Ergebnisse · '+(scanName(j.task));
  $('logs').textContent=(j.logs||[]).map(x=>x.time+' · '+x.type+' · '+x.url+' · '+x.message).join('\n')||'Noch keine Protokolleinträge.';
@@ -108,7 +110,8 @@ function applyFilters(){
 }
 function renderView(){
  const j=state.last;if(!j)return;
- for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===state.view));
+ for(const button of document.querySelectorAll('button[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===state.view));
+ const graph=state.view==='structure';structure.update(j,graph);if(graph){$('overview').hidden=true;$('dataPanel').hidden=true;$('exportToggle').disabled=true;$('exportMenu').hidden=true;return;}
  const overview=state.view==='overview';$('overview').hidden=!overview;$('dataPanel').hidden=overview;$('exportToggle').disabled=overview;if(overview){$('exportMenu').hidden=true;return;}
  const f=filter();$('viewTitle').textContent=viewLabels[state.view];$('viewHelp').textContent=state.view==='images'?'Große Bilder ab '+(j.imageThresholdKb||200)+' KB. Fehlende und leere Alt-Attribute sind getrennt aufgeführt.':help[state.view];
 
@@ -181,8 +184,8 @@ for(const id of ['search','sort'])$(id).oninput=()=>{filter()[id]=$(id).value;fi
 $('resetFilters').onclick=()=>{state.filters[state.view]=defaults();applyFilters();renderView();};
 $('prev').onclick=()=>{filter().page--;renderView();};$('next').onclick=()=>{filter().page++;renderView();};$('pageSize').onchange=()=>{filter().size=Number($('pageSize').value);filter().page=0;renderView();};
 $('exportToggle').onclick=()=>{$('exportMenu').hidden=!$('exportMenu').hidden;$('exportToggle').setAttribute('aria-expanded',String(!$('exportMenu').hidden));};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('exportMenu').hidden=true;$('exportToggle').setAttribute('aria-expanded','false');}});
-document.addEventListener('click',e=>{if(!e.target.closest('.export-wrap')){$('exportMenu').hidden=true;$('exportToggle').setAttribute('aria-expanded','false');}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){for(const el of document.querySelectorAll('.facet[open]')){if(el.contains(document.activeElement))el.querySelector('summary').focus();el.open=false;}$('exportMenu').hidden=true;$('exportToggle').setAttribute('aria-expanded','false');}});
+document.addEventListener('click',e=>{for(const el of document.querySelectorAll('.facet[open]'))if(!el.contains(e.target))el.open=false;if(!e.target.closest('.export-wrap')){$('exportMenu').hidden=true;$('exportToggle').setAttribute('aria-expanded','false');}});
 const columns={broken:['priority','issue','url','kind','external','statusCode','finalStatusCode','finalUrl','source','linkText','status','error','imported','discoveredVia','redirects','soft404','reasons','recommendation'],problems:['priority','category','issue','url','statusCode','sources','recommendation'],pages:['url','status','statusCode','finalStatusCode','title','description','h1','canonical','indexability','issues','depth','incomingCount','outgoingCount','sourceUrls'],keywords:['domain','url','title','keyword','count','snippet'],http:['url','status','statusCode','finalStatusCode','finalUrl','redirects','requestError','sourceUrls'],images:['url','status','statusCode','finalUrl','bytes','sizeExact','error','sources','missingAltSources','emptyAltSources']};
 function download(rows,keys,name){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText(rows,keys)],{type:'text/csv;charset=utf-8'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);$('exportMenu').hidden=true;$('exportToggle').setAttribute('aria-expanded','false');}
 function exportRows(rows){return state.view==='broken'?rows.flatMap(r=>(r.occurrences?.length?r.occurrences:[{source:'',text:''}]).map(o=>({...r,source:o.source,linkText:o.text}))):rows;}

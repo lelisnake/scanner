@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {buildTree} from '../public/structure.js';
+const pages=['https://a.test/a','https://a.test/a/','https://a.test/a/b?x=1','https://a.test/a/b?x=2','https://b.test/','invalid'].map(url=>({url,status:'checked'}));
+const t=buildTree(pages,[{url:pages[2].url,priority:'Hoch'}],true);
+assert.equal(t.roots.length,2);
+assert.equal([...t.nodes.values()].filter(n=>n.page).length,5);
+assert.equal(t.nodes.get('dir:https://a.test/a/').severity,'high');
+assert.equal(t.nodes.get('dir:https://a.test/').pages.length,4);
+assert.equal(t.nodes.get('page:https://a.test/a').parent,'dir:https://a.test/');
+assert.equal(t.nodes.get('page:https://a.test/a/').parent,'dir:https://a.test/a/');
+assert.equal(buildTree(pages,[],false).roots[0].severity,'unknown');
+assert.equal(buildTree([],[],true).roots.length,0);
+console.log('PASS: directory hierarchy, synthetic ancestors, multiple hosts, query variants, SEO aggregation, unknown and empty results');

@@ -33,7 +33,7 @@ try{
  assert.equal(await page.locator('#runTitle img').getAttribute('src'),'https://www.bonava.de/favicon.ico');assert.equal(await page.locator('#runTitle img').getAttribute('alt'),'');assert.equal(await page.locator('#runTitle img').getAttribute('width'),'24');await page.locator('#runTitle img').dispatchEvent('error');assert.equal(await page.locator('#runTitle img').isVisible(),false);assert((await page.locator('#runTitle').innerText()).includes(root));
  assert.deepEqual(body.keywords,['Segeln','Natur']);assert.equal(body.imageAudit,true);
  assert.equal(await page.locator('#setup').isVisible(),false);
- await page.locator('[data-view="pages"]').click();
+ await page.locator('button[data-view="pages"]').click();
  await page.locator('#rows details').first().locator(':scope > summary').click();
  const element=await page.locator('#rows details').first().elementHandle();
  const before=gets;while(gets===before)await new Promise(r=>setTimeout(r,100));
@@ -51,20 +51,53 @@ try{
  {url:root+'/ok',kind:'Seite',status:'checked',statusCode:200,finalStatusCode:200,issue:'',sources:[],occurrences:[]}
  ];
  await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();
- await page.locator('[data-view="problems"]').click();
+ await page.locator('button[data-view="structure"]').click();
+ await page.locator('#structureSvg [data-node]').first().waitFor();
+ assert(await page.locator('#structureCount').innerText().then(t=>t.includes('URLs insgesamt')));
+ await page.locator('#structureSvg [data-node^="page:"]').first().focus();
+ await page.locator('#structureSvg [data-node^="page:"]').first().press('Enter');
+ assert.equal(await page.locator('#structureDetails a').getAttribute('href'),root);
+ await page.locator('#structureSearch').fill('not-a-real-url');
+ assert.equal(await page.locator('#structureSvg [data-node]').count(),0);
+ await page.locator('#structureSearch').fill('Finkengarten');
+ assert(await page.locator('#structureSvg [data-node]').count()>0);
+ await page.locator('#structureFit').click();
+ await page.locator('#structureSvg [data-node^="dir:"]').first().focus();
+ await page.locator('#structureSvg [data-node^="dir:"]').first().press('Enter');
+ await page.getByRole('button',{name:'Teilbaum einklappen',exact:true}).click();
+ assert.equal(await page.locator('#structureSvg [data-node^="page:"]').count(),0);
+ await page.getByRole('button',{name:'Teilbaum aufklappen',exact:true}).click();
+ assert.equal(await page.locator('#structureSvg [data-node^="page:"]').count(),1);
+ await page.locator('#structureSearch').fill('');
+ await page.locator('#structureFinding').selectOption('unknown');
+ assert.equal(await page.locator('#structureSvg [data-node^="page:"]').count(),0);
+ await page.locator('#structureFinding').selectOption('');
+ await page.setViewportSize({width:390,height:844});
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'graph must fit mobile width');
+ await page.screenshot({path:'/tmp/scanner-structure-mobile.png',fullPage:true});
+ await page.setViewportSize({width:1440,height:1000});
+ await page.locator('#structurePanel').screenshot({path:'/tmp/scanner-structure.png'});
+
+ await page.locator('button[data-view="pages"]').click();
+ const facet=page.locator('[data-facet="http"]');await facet.locator('summary').click();
+ assert(await facet.evaluate(e=>e.open));await page.locator('#viewTitle').click();assert.equal(await facet.evaluate(e=>e.open),false);
+ await facet.locator('summary').click();await facet.locator('summary').press('Escape');assert.equal(await facet.evaluate(e=>e.open),false);
+ console.log('PASS: directory graph, search, keyboard details, outside click and Escape');
+
+ await page.locator('button[data-view="problems"]').click();
  assert.equal(await page.locator('#groups details.issue-group').count(),1);
  await page.locator('#groups summary').first().click();
  assert((await page.locator('#groups').innerText()).includes(root+'/2'));
  await chooseFacet('priority','Mittel');await page.locator('#emptyTitle').filter({hasText:'Keine Ergebnisse für diese Filter'}).waitFor();
  await page.locator('#resetFilters').click();assert.equal(await page.locator('#groups details.issue-group').count(),1);
- await page.locator('[data-view="pages"]').click();
+ await page.locator('button[data-view="pages"]').click();
  await page.locator('#search').fill('not-found');assert.equal(await page.locator('#exportToggle').isEnabled(),true);
  await page.locator('#exportToggle').click();assert.equal(await page.locator('#exportFiltered').isEnabled(),false);assert.equal(await page.locator('#exportAll').isEnabled(),true);
  await page.keyboard.press('Escape');await page.locator('#resetFilters').click();
  await page.locator('#exportToggle').click();const downloadPromise=page.waitForEvent('download');await page.locator('#exportFiltered').click();const download=await downloadPromise;
  const csv=await readFile(await download.path(),'utf8');assert(csv.includes(root));assert(csv.includes('Projekt Finkengarten'));
 
- await page.locator('[data-view="broken"]').click();assert.equal(await page.locator('#rows > tr').count(),2);
+ await page.locator('button[data-view="broken"]').click();assert.equal(await page.locator('#rows > tr').count(),2);
  await page.locator('#resetFilters').click();await chooseFacet('finding','404');assert.equal(await page.locator('#rows > tr').count(),1);
  await page.locator('#rows details > summary').first().click();assert((await page.locator('#rows').innerText()).includes('Exposé herunterladen'));assert((await page.locator('#rows').innerText()).includes('Preisliste'));
  await page.locator('#exportToggle').click();const brokenDownloadPromise=page.waitForEvent('download');await page.locator('#exportFiltered').click();const brokenDownload=await brokenDownloadPromise;
@@ -72,12 +105,12 @@ try{
  await chooseFacet('finding','404',false);await chooseFacet('finding','soft');assert.equal(await page.locator('#rows > tr').count(),1);
  await page.locator('#resetFilters').click();assert.equal(await page.locator('#rows > tr').count(),3);
 
- await page.locator('[data-view="keywords"]').click();await chooseFacet('keyword','Natur');await chooseFacet('keyword','Segeln');assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('button[data-view="keywords"]').click();await chooseFacet('keyword','Natur');await chooseFacet('keyword','Segeln');assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('#rows > tr').count(),1);
  await chooseFacet('count','1');assert.equal(await page.locator('#rows > tr').count(),0);
  await chooseFacet('count','2-5');assert.equal(await page.locator('#rows > tr').count(),1);
- await page.locator('[data-view="pages"]').click();await chooseFacet('http','200');await chooseFacet('depth','0');assert.equal(await page.locator('#rows > tr').count(),1);
- await page.locator('[data-view="keywords"]').click();assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('[data-facet="count"] input:checked').count(),2);
- await page.locator('[data-view="pages"]').click();assert.equal(await page.locator('[data-facet="http"] input:checked').count(),1);await page.locator('#resetFilters').click();assert.equal(await page.locator('#facets input:checked').count(),0);
+ await page.locator('button[data-view="pages"]').click();await chooseFacet('http','200');await chooseFacet('depth','0');assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('button[data-view="keywords"]').click();assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('[data-facet="count"] input:checked').count(),2);
+ await page.locator('button[data-view="pages"]').click();assert.equal(await page.locator('[data-facet="http"] input:checked').count(),1);await page.locator('#resetFilters').click();assert.equal(await page.locator('#facets input:checked').count(),0);
  console.log('PASS: checkbox multi-select, AND combinations, no-hit state, per-tab retention and complete reset');
  await page.locator('#newScan').click();await page.locator('#urlsTab').click();
  assert((await page.locator('#resultTitle').innerText()).includes('Keyword-Scan'),'draft mode must not relabel previous results');
@@ -85,7 +118,7 @@ try{
  assert.equal(await page.locator('#setup').isVisible(),false);
  await mkdir('/tmp/scanner-qa',{recursive:true});
  await page.screenshot({path:'/tmp/scanner-qa/desktop.png',fullPage:true});
- await page.setViewportSize({width:390,height:844});await page.locator('[data-view="pages"]').click();
+ await page.setViewportSize({width:390,height:844});await page.locator('button[data-view="pages"]').click();
  await page.screenshot({path:'/tmp/scanner-qa/mobile-debug.png',fullPage:true});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile page must not overflow horizontally');
  await page.screenshot({path:'/tmp/scanner-qa/mobile.png',fullPage:true});

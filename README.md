@@ -98,3 +98,11 @@ Alle Datenreiter erhalten aufklappbare Filtergruppen mit Checkboxen. Mehrere Wer
 - Defekte Links: 404, 410, Soft-404, andere HTTP-/Abruffehler, nicht geprüfte und erfolgreiche Ziele; finaler HTTP-Code, Zieltyp, intern/extern/importiert, Domain. Die Standardauswahl „Alle Befunde / Verdachtsfälle“ lässt sich entfernen; Zurücksetzen zeigt sämtliche Linkziele.
 
 Filter und ihre offenen Gruppen bleiben im laufenden Browser beim Reiterwechsel erhalten. Ein erfolgreich gestarteter neuer Scan setzt sie zurück. Nach einem Neuladen beginnt die Filterauswahl neu. Gefilterte CSV-Exporte enthalten genau die durch alle Filter und Suche ausgewählten Ergebnisse. Nicht ausgewertete SEO-Daten werden ausdrücklich als unbekannt/ausstehend behandelt.
+
+## Website-Struktur (3.3)
+
+Der neue Reiter zeigt einen lokal berechneten, kräftebasierten SVG-Verzeichnisbaum aus den URLs des aktuellen Crawls. Verzeichnisse werden bei Bedarf synthetisch ergänzt und ausdrücklich als solche gekennzeichnet; Kanten stellen URL-Pfade dar, keine internen Links. Jede vollständige URL bleibt ein eigener Seitenknoten, einschließlich Query- und Slash-Varianten. Farben entsprechen der höchsten Befundpriorität; unbekannte/nicht angeforderte Prüfungen bleiben grau. Verzeichnisfarben aggregieren den gesamten Teilbaum.
+
+Zoomen, Ansicht und Knoten ziehen, Einpassen, Titel-/URL-Suche, Prioritätsfilter, Seitendetails und separate Seitenlinks sind verfügbar. Teilbäume lassen sich in den Details sowie per Pfeiltaste rechts/links ein- und ausklappen, Enter öffnet Details. Große Bäume starten eingeklappt; Verzeichnisse zeigen zunächst bis zu 40 Kinder, weitere lassen sich nachladen. Maximal 600 Knoten werden gleichzeitig dargestellt, mit sichtbarem Hinweis. Alle Crawl-URLs bleiben im Datenmodell enthalten. Filter und Positionen bleiben beim Reiterwechsel erhalten und werden beim neuen Scan zurückgesetzt. Keine externe Visualisierungsbibliothek und keine Datenübertragung an Dritte.
+
+Die Auswertungsfilter schließen bei Klick außerhalb sowie mit Esc; die Auswahl bleibt erhalten.
