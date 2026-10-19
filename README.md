@@ -1,27 +1,19 @@
-# Domain Keyword Scanner
+# Domain Keyword Scanner 2.0
 
-WebApp für manuelle Keyword-Scans öffentlich zugänglicher Websites.
+Hybrid-Crawler für öffentliche Websites mit rekursiven XML-Sitemaps, HTML-Linksuche, optionalem Playwright-Rendering, Live-Status, Fehlerprotokoll und CSV-Export.
 
-## Start
+## Deployment auf Render
 
-Node.js 20+ installieren, dann:
+Render Blueprint mit `render.yaml` erstellen oder bestehenden Web Service auf **Docker** umstellen. Dockerfile im Repository-Root. Health-Check `/api/health`. Der Blueprint nutzt den kostenpflichtigen Starter-Tarif.
 
-```bash
-npm install
-npm start
-```
+## Nutzung
 
-Öffne http://localhost:3000.
+1–5 Domains, 1–30 Keywords, bis 5000 geprüfte Seiten je Domain. Scan manuell starten, Status wird alle 1,5 Sekunden aktualisiert. Die Scan-Daten liegen nur im Arbeitsspeicher und verschwinden bei Neustart oder nach einer Stunde.
 
-## Online bereitstellen
+## Grenzen
 
-Repository zu GitHub hochladen und auf Render als **Web Service** verbinden. Build Command: `npm install`, Start Command: `npm start`. Render setzt `PORT` automatisch. Alternativ auf jedem Node.js-Host betreiben.
+Nur öffentlich erreichbare und durch robots.txt erlaubte Seiten. Kein Anspruch auf vollständige Erfassung nicht verlinkter URLs. Bis 150 Sitemaps und 25.000 entdeckte URLs pro Domain. Große Scans benötigen ausreichend RAM und Laufzeit. JS-Rendering im Hybrid-Modus nur bei wenigen statischen Links.
 
-## Grenzen der ersten Version
+## Sicherheit
 
-- Maximal 5 Domains, 30 Keywords, 100 Seiten pro Domain und Scan.
-- Scannt HTML-Text, keine PDF-Inhalte oder nur clientseitig gerenderte Inhalte.
-- Findet Unterseiten über interne Links und die Standard-Sitemap `/sitemap.xml`; verschachtelte Sitemap-Indizes werden noch nicht aufgelöst.
-- robots.txt wird berücksichtigt. Keine Anmeldung, kein Scheduler, keine dauerhafte Speicherung.
-- Server muss ausgehende HTTP(S)-Verbindungen erlauben. Bei langen Scans kann ein Hosting-Timeout greifen.
-- SSRF-Schutz: nur öffentliche DNS-Ziele und gleiche Domain; für öffentlich zugänglichen Produktivbetrieb zusätzlich Egress-Firewall, Rate-Limits und Login empfehlen.
+Nur für vertrauenswürdige Bediener bereitstellen; vor öffentlicher Freigabe Authentifizierung und Rate-Limiting ergänzen. DNS/IP-Validierung schützt nicht vollständig vor DNS-Rebinding. Crawling nur mit Erlaubnis und Rücksicht auf fremde Server durchführen.
