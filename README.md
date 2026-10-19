@@ -54,3 +54,18 @@ Neue Bereiche unter den Crawl-Ergebnissen, in beiden Modi:
 - Alle drei Bereiche besitzen Filter, Seitenaufteilung (100 Zeilen) und CSV-Exporte. CSV-Zellen mit möglichen Tabellenformeln werden als Text exportiert.
 
 Problemübersicht und Quellseiten sind bei Abbruch oder Seitenlimits unvollständig. Vollständige Link- und SEO-Auswertung erfolgt am Scanende. Prioritäten sind heuristische Arbeitshinweise; sie garantieren weder SEO-Wirkung noch tatsächliche Indexierung.
+
+## Oberfläche und Prüfumfang (3.0)
+
+- Einrichtung und laufender/abgeschlossener Scan sind getrennt. Neue Einstellungen ändern niemals die Beschriftung vorhandener Ergebnisse.
+- Domain- und Pfadbereich werden vor dem Start erklärt. Keywords können als Chips eingegeben oder als Liste eingefügt werden. Eingabefehler erscheinen direkt am Feld.
+- Standardmäßig sammelt die Oberfläche URLs und HTTP-/Linkdaten. SEO- und Bilderprüfungen sind separat zuschaltbar. Die API bleibt für ältere Clients kompatibel: Ohne Optionsfelder gelten beide Prüfungen weiterhin als aktiviert.
+- Erweiterte Einstellungen sind eingeklappt, Exportfunktionen stehen bei Ergebnissen. Bildgrößen-Einstellungen erscheinen nur bei gewählter Bilderprüfung.
+- Fortschritt wird als Phase angezeigt: URL-Ermittlung, Seiten, Bilder und Auswertung. Bei unbekannter Gesamtzahl gibt es keine irreführende Prozentangabe. Abschluss wird von Vollständigkeit getrennt; Blockaden, Abruffehler, Abbruch und Limits werden als Einschränkung gemeldet.
+- Ergebnisreiter: Übersicht, gruppierte Aufgaben, URLs, Keywords (nur Keyword-Scans), HTTP und Bilder (bei gewählter Prüfung). Tabellen aktualisieren nur geänderte Zeilen; unveränderte offene Details bleiben bestehen.
+- Aufgaben zählen Befunde und betroffene URLs getrennt. Gleiche Befunde werden gruppiert; Filter lassen sich einzeln oder vollständig zurücksetzen. Live-Aufgaben zeigen bis zum Abschluss „Noch nicht ausgewertet“.
+- Sortierbare Ansichten, anpassbare Seitengröße und Exporte der aktuellen Auswahl oder sämtlicher Zeilen. Link- und Protokollexporte sind zusätzlich verfügbar. Übersicht und Protokoll zeigen keine leeren Scheinergebnisse.
+- Mobile Darstellung als kompakte Ergebniskarten; Desktop-Tabellen mit festen Köpfen und erster Spalte. Bildvorschau wird erst auf Anforderung geladen. Durchgehend deutsche Statusbezeichnungen.
+- Entwürfe und die letzte Scan-ID werden lokal im Browser gespeichert. Ein Neuladen kann den Scan wiederherstellen, solange er serverseitig existiert. Das ist keine dauerhafte Crawl-Historie: Ergebnisse verschwinden bei Serverneustart oder nach der Aufbewahrungszeit. Verbindungsfehler werden mit Wiederholungsmöglichkeit erklärt.
+
+Prüfung: `npm test` für API und Oberflächen-Hilfsfunktionen. `npm run test:browser` prüft mit lokal installiertem Playwright-Chromium die Bedienabläufe bei Desktop- und Mobilbreite (vorher `npx playwright install chromium`). Es werden simulierte API-Antworten benutzt; die Tests starten keine Scans fremder Websites. Bildschirmaufnahmen für die lokale Layoutprüfung liegen unter `/tmp/scanner-qa/`.

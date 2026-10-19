@@ -102,6 +102,14 @@ try{
  assert(audited.problems.some(p=>p.issue.startsWith('Große Bilddatei')&&p.sources.length===2));
  assert.equal(audited.problems[0].priority,'Hoch');
  assert.equal((await post({task:'urls',domains:['example.com'],imageThresholdKb:-1})).status,400);
+
+ requests.length=0;
+ const minimal=await job({task:'urls',domains:['example.com/audit'],mode:'standard',seoAudit:false,imageAudit:false});
+ assert.equal(minimal.phase,'done');assert.equal(minimal.images.length,0);assert(minimal.pages.every(p=>!p.description&&!p.issues.length));
+ assert(!requests.some(url=>new URL(url).pathname.startsWith('/assets/')));assert(!minimal.problems.some(p=>p.category==='SEO'));
+ assert.equal(minimal.configuration.domains[0],'example.com/audit');assert.equal(minimal.seoAudit,false);
+ assert.equal((await post({task:'urls',domains:['not a url']})).status,400);
+ assert.equal((await post({task:'urls',domains:['example.com'],seoAudit:'false'})).status,400);
  console.log('PASS: HTTP status, redirect chains/loops/invalid targets, exact link sources, image alt/size/CDN/lazy/srcset, blocked/private assets and priority tasks');
  console.log('PASS: SEO metadata, missing/duplicate fields, meta/header noindex, real link depths, sitemap orphans, unique incoming/outgoing links, robots, include/exclude/wildcards, redirect scope, page limits keyword regression and automatic subpath boundaries (both modes, trailing slash, redirects, sitemap and canonical)');
  process.exit(0);

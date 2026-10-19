@@ -4,8 +4,8 @@ export function buildProblems(job){
  const add=(priority,category,issue,url,sources,recommendation,statusCode=null)=>problems.push({priority,category,issue,url,statusCode,sources:[...new Set(sources||[])],recommendation});
  for(const page of job.pages){
   const sources=page.sourceUrls||[];
-  if(page.indexability==='noindex')add('Hinweis','SEO','noindex gesetzt',page.url,sources,'Prüfen, ob der Ausschluss aus dem Suchindex beabsichtigt ist.',page.statusCode);
-  if(page.status==='blocked')add('Hinweis','SEO','Durch robots.txt blockiert',page.url,sources,'Prüfen, ob der Crawl-Ausschluss beabsichtigt ist.',page.statusCode);
+  if(job.seoAudit!==false&&page.indexability==='noindex')add('Hinweis','SEO','noindex gesetzt',page.url,sources,'Prüfen, ob der Ausschluss aus dem Suchindex beabsichtigt ist.',page.statusCode);
+  if(job.seoAudit!==false&&page.status==='blocked')add('Hinweis','SEO','Durch robots.txt blockiert',page.url,sources,'Prüfen, ob der Crawl-Ausschluss beabsichtigt ist.',page.statusCode);
   if(page.finalStatusCode>=400)add('Hoch','HTTP','HTTP '+page.finalStatusCode,page.url,sources,'Linkziel reparieren, Link aktualisieren oder bewusst entfernen.',page.finalStatusCode);
   else if(page.failureType==='redirect-loop')add('Hoch','Weiterleitung','Weiterleitungsschleife',page.url,sources,'Weiterleitungen so ändern, dass eine erreichbare Zielseite entsteht.',page.statusCode);
   else if(page.failureType==='redirect-limit')add('Hoch','Weiterleitung','Zu viele Weiterleitungen',page.url,sources,'Weiterleitungskette verkürzen und Ziel prüfen.',page.statusCode);

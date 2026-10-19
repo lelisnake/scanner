@@ -1,11 +1,12 @@
 {
   "name": "domain-keyword-scanner",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check audit.js",
-    "test": "node tests/integration.mjs && node tests/ui.mjs"
+    "check": "node --check server.js && node --check audit.js && node --check public/app.js && node --check public/ui-core.js",
+    "test": "node tests/integration.mjs && node tests/ui.mjs",
+    "test:browser": "node tests/browser.mjs"
   },
   "engines": {
     "node": "22.x"
