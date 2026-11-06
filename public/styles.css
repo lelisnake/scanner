@@ -12,3 +12,4 @@
 #structureSvg{width:100%;height:560px;max-height:65vh;border:1px solid var(--border);background:#f8faff;border-radius:10px;touch-action:none;display:block}#structureSvg g[role=button]:focus circle{stroke:#111;stroke-width:4}#structureDetails{margin-top:16px;padding:16px;background:#f2f6fc;border-radius:8px;overflow-wrap:anywhere}#structureDetails button{margin:6px 8px 0 0}.structure-legend{font-size:12px;line-height:1.8}#structureCount{margin-top:12px}
 @media(prefers-reduced-motion:reduce){#structureSvg{scroll-behavior:auto}}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:3px}.high-dot{background:#bd263b}.medium-dot{background:#bb7000}.hint-dot{background:#4268bc}.ok-dot{background:#218153}.unknown-dot{background:#718096}
+.code-snippet{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}

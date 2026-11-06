@@ -8,7 +8,7 @@ let browser;
 const id='12345678-1234-1234-1234-123456789012';
 const root='https://www.bonava.de/immobilien/finkengarten';
 const pageRecord={url:root,status:'checked',title:'Projekt Finkengarten',description:'Wohnen in Wildau',h1:['Finkengarten'],canonical:root,indexability:'Potenziell indexierbar',statusCode:200,finalStatusCode:200,sourceUrls:[root+'/nachbar'],incomingCount:1,outgoingCount:3,depth:0,issues:['Description doppelt']};
-let job={id,status:'running',phase:'pages',task:'keywords',configuration:{domains:[root],keywords:['Segeln','Natur'],maxPages:5000,mode:'hybrid'},seoAudit:true,imageAudit:true,stats:[{startUrl:root,domain:'www.bonava.de',discovered:2,processed:1,checked:1,queued:1,state:'pages'}],pages:[pageRecord],results:[{url:root,keyword:'Natur',count:2,snippet:'Natur genießen',title:'Projekt'}],images:[],problems:[],logs:[],createdAt:new Date().toISOString()};
+let job={id,status:'running',phase:'pages',task:'keywords',searchScope:'html',configuration:{domains:[root],keywords:['Segeln','Natur'],maxPages:5000,mode:'hybrid'},seoAudit:true,imageAudit:true,stats:[{startUrl:root,domain:'www.bonava.de',discovered:2,processed:1,checked:1,queued:1,state:'pages'}],pages:[pageRecord],results:[{url:root,keyword:'Natur',count:2,snippet:'Natur genießen',title:'Projekt'}],images:[],problems:[],logs:[],createdAt:new Date().toISOString()};
 let body,gets=0,expired=false,networkFailure=false;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(origin+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,30));}
@@ -25,13 +25,15 @@ try{
  await page.locator('#domainError').waitFor({state:'visible'});assert.equal(await page.locator('#domains').getAttribute('aria-invalid'),'true');
  await page.locator('#domains').fill(root);await page.locator('#scope').filter({hasText:'Nur'}).waitFor();
  await page.locator('#keywordsTab').click();
+ await page.locator('#searchScope').selectOption('html');
+ job.results[0].searchScope='html';job.results[0].snippet='<script>window.sourceCodeExecuted=true</script> Natur';
  await page.locator('#keywordInput').fill('Segeln,Natur');await page.locator('#keywordInput').press('Enter');
  assert.equal(await page.locator('#keywordChips .chip').count(),2);
  await page.locator('#seoAudit').check();await page.locator('#imageAudit').check();
  await page.getByRole('button',{name:'Scan starten',exact:true}).click();
  await page.locator('#phase').filter({hasText:'Seiten prüfen'}).waitFor();
  assert.equal(await page.locator('#runTitle img').getAttribute('src'),'https://www.bonava.de/favicon.ico');assert.equal(await page.locator('#runTitle img').getAttribute('alt'),'');assert.equal(await page.locator('#runTitle img').getAttribute('width'),'24');await page.locator('#runTitle img').dispatchEvent('error');assert.equal(await page.locator('#runTitle img').isVisible(),false);assert((await page.locator('#runTitle').innerText()).includes(root));
- assert.deepEqual(body.keywords,['Segeln','Natur']);assert.equal(body.imageAudit,true);
+ assert.equal(body.searchScope,'html');assert.deepEqual(body.keywords,['Segeln','Natur']);assert.equal(body.imageAudit,true);
  assert.equal(await page.locator('#setup').isVisible(),false);
  await page.locator('button[data-view="pages"]').click();
  await page.locator('#rows details').first().locator(':scope > summary').click();
@@ -105,7 +107,7 @@ try{
  await chooseFacet('finding','404',false);await chooseFacet('finding','soft');assert.equal(await page.locator('#rows > tr').count(),1);
  await page.locator('#resetFilters').click();assert.equal(await page.locator('#rows > tr').count(),3);
 
- await page.locator('button[data-view="keywords"]').click();await chooseFacet('keyword','Natur');await chooseFacet('keyword','Segeln');assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('#rows > tr').count(),1);
+ await page.locator('button[data-view="keywords"]').click();assert.equal(await page.evaluate(()=>window.sourceCodeExecuted),undefined);assert((await page.locator('#viewHelp').innerText()).includes('HTML-Quellcode'));assert((await page.locator('#rows').innerText()).includes('<script>'));await chooseFacet('keyword','Natur');await chooseFacet('keyword','Segeln');assert.equal(await page.locator('[data-facet="keyword"] input:checked').count(),2);assert.equal(await page.locator('#rows > tr').count(),1);
  await chooseFacet('count','1');assert.equal(await page.locator('#rows > tr').count(),0);
  await chooseFacet('count','2-5');assert.equal(await page.locator('#rows > tr').count(),1);
  await page.locator('button[data-view="pages"]').click();await chooseFacet('http','200');await chooseFacet('depth','0');assert.equal(await page.locator('#rows > tr').count(),1);
@@ -114,6 +116,7 @@ try{
  console.log('PASS: checkbox multi-select, AND combinations, no-hit state, per-tab retention and complete reset');
  await page.locator('#newScan').click();await page.locator('#urlsTab').click();
  assert((await page.locator('#resultTitle').innerText()).includes('Keyword-Scan'),'draft mode must not relabel previous results');
+ assert.equal(await page.locator('#searchScope').inputValue(),'html');
  await page.reload();await page.locator('#phase').filter({hasText:'Abgeschlossen'}).waitFor();
  assert.equal(await page.locator('#setup').isVisible(),false);
  await mkdir('/tmp/scanner-qa',{recursive:true});

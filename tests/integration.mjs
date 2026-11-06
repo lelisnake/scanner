@@ -1,3 +1,4 @@
+import {chromium} from 'playwright';
 import dns from 'node:dns/promises';
 import assert from 'node:assert/strict';
 dns.lookup=async host=>[{address:host==='private.invalid'?'127.0.0.1':'93.184.216.34',family:4}];
@@ -12,6 +13,8 @@ globalThis.fetch=async(url,options)=>{
  if(u.pathname==='/sitemap_index.xml')return new Response('',{status:404});
 
 
+ if(u.pathname==='/source-test')return html('<html><head><title>Source test</title><script src="https://cdn.immoviewer.com/player.js"></script><script>window.vendor="ImmoViewer";</script></head><body><iframe src="https://immoviewer.com/tour"></iframe><!-- immoviewer --><a data-vendor="immoviewer" href="/source-test/child">Child</a></body></html>');
+ if(u.pathname==='/source-test/child')return html('<body>Keine Einbindung</body>');
  if(u.pathname==='/links')return html('<title>Links</title><h1>Links</h1><a href="/links/gone">Gelöschte Wohnung</a><a href="/links/redirect">Alte Kampagne</a><a href="/downloads/expose.pdf">Exposé PDF</a><a href="https://partner.example/missing">Partnerangebot</a><a href="/links/soft">Wohnung</a><a href="/links/article">404-Fachartikel</a><a href="/links/restricted">Intern</a><a href="/links/parent">Elternseite</a><img src="/assets/missing.png" alt="Projektfoto">');
  if(u.pathname==='/links/parent')return html('<a href="/links/gone">Anderer Linktext</a>');
  if(u.pathname==='/links/gone')return new Response('',{status:404});
@@ -53,6 +56,19 @@ const post=body=>realFetch('http://127.0.0.1:3127/api/scans',{method:'POST',head
 async function job(body){let response=await post(body);assert.equal(response.status,202);let {id}=await response.json();for(let i=0;i<600;i++){let j=await (await realFetch('http://127.0.0.1:3127/api/scans/'+id)).json();if(j.status==='completed')return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timeout');}
 try{
  assert.equal((await post({domains:['example.com']})).status,400);
+ assert.equal((await post({task:'keywords',domains:['example.com'],keywords:['immoviewer'],searchScope:'invalid'})).status,400);
+ const sourceJob=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],searchScope:'html',mode:'standard',seoAudit:false,imageAudit:false});
+ assert.equal(sourceJob.searchScope,'html');assert.equal(sourceJob.configuration.searchScope,'html');
+ assert.equal(sourceJob.results.length,1);assert.equal(sourceJob.results[0].count,5);assert.equal(sourceJob.results[0].searchScope,'html');assert(sourceJob.results[0].snippet.includes('<script'));
+ assert(sourceJob.pages.some(p=>p.url.endsWith('/source-test/child')));
+ const textJob=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],mode:'standard',seoAudit:false,imageAudit:false});
+ assert.equal(textJob.searchScope,'text');assert.equal(textJob.results.length,0);
+ const launch=chromium.launch;
+ chromium.launch=async()=>({newContext:async()=>({route:async()=>{},newPage:async()=>{let current;return {goto:async url=>{current=url;},waitForTimeout:async()=>{},url:()=>current,content:async()=>'<html><body>DOM nach JavaScript ohne Anbieterkennung</body></html>'};}}),close:async()=>{}});
+ try{const rendered=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],searchScope:'html',mode:'always',seoAudit:false,imageAudit:false});assert.equal(rendered.results[0].count,5);assert(rendered.stats[0].rendered>0);}finally{chromium.launch=launch;}
+
+ console.log('PASS: raw HTML search in head/script/iframe/attribute/comment, case-insensitive counts, scope validation and text-search compatibility');
+
  assert.equal((await post({task:'invalid',domains:['example.com']})).status,400);
  assert.equal((await post({task:'urls',domains:['example.com'],include:'bad'})).status,400);
  let urls=await job({task:'urls',domains:['example.com'],mode:'standard'});
