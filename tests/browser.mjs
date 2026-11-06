@@ -9,7 +9,7 @@ const id='12345678-1234-1234-1234-123456789012';
 const root='https://www.bonava.de/immobilien/finkengarten';
 const pageRecord={url:root,status:'checked',title:'Projekt Finkengarten',description:'Wohnen in Wildau',h1:['Finkengarten'],canonical:root,indexability:'Potenziell indexierbar',statusCode:200,finalStatusCode:200,sourceUrls:[root+'/nachbar'],incomingCount:1,outgoingCount:3,depth:0,issues:['Description doppelt']};
 let job={id,status:'running',phase:'pages',task:'keywords',searchScope:'html',configuration:{domains:[root],keywords:['Segeln','Natur'],maxPages:5000,mode:'hybrid'},seoAudit:true,imageAudit:true,stats:[{startUrl:root,domain:'www.bonava.de',discovered:2,processed:1,checked:1,queued:1,state:'pages'}],pages:[pageRecord],results:[{url:root,keyword:'Natur',count:2,snippet:'Natur genießen',title:'Projekt'}],images:[],problems:[],logs:[],createdAt:new Date().toISOString()};
-let body,gets=0,expired=false,networkFailure=false;
+let body,gets=0,expired=false,networkFailure=false,emptyReply=false,badGateway=false;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(origin+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,30));}
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
@@ -17,7 +17,7 @@ try{
  const page=await context.newPage(),errors=[];
  async function chooseFacet(group,value,checked=true){const details=page.locator('[data-facet="'+group+'"]');if(!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();await details.locator('input[value='+JSON.stringify(value)+']').setChecked(checked);}page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/scans',async route=>{body=route.request().postDataJSON();await route.fulfill({status:202,json:{id}});});
- await page.route('**/api/scans/'+id,async route=>{gets++;if(networkFailure){await route.abort();return;}await route.fulfill({status:expired?404:200,json:expired?{error:'Scan nicht gefunden'}:job});});
+ await page.route('**/api/scans/'+id,async route=>{gets++;if(emptyReply){await route.fulfill({status:200,body:''});return;}if(badGateway){await route.fulfill({status:502,body:'Bad gateway'});return;}if(networkFailure){await route.abort();return;}await route.fulfill({status:expired?404:200,json:expired?{error:'Scan nicht gefunden'}:job});});
  await page.route('**/api/scans/'+id+'/cancel',async route=>{job={...job,status:'cancelled',phase:'done',completedAt:new Date().toISOString()};await route.fulfill({json:{ok:true}});});
  await page.route('**/favicon.ico',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAGUlEQVR4nGNkYPjPQApgIkn1qIZRDUNKAwA+MAEfWiW9ygAAAABJRU5ErkJggg==','base64')}));
  await page.goto(origin);
@@ -133,9 +133,12 @@ try{
  await page.locator('#scan').click();await page.locator('#phase').filter({hasText:'Bilder prüfen'}).waitFor();assert.equal(await page.locator('#progress').getAttribute('value'),'50');
  networkFailure=true;await page.reload();await page.locator('#connection').waitFor({state:'visible'});
  networkFailure=false;await page.locator('#retry').click();await page.locator('#connection').waitFor({state:'hidden'});
+ emptyReply=true;await page.locator('#retry').click();await page.locator('#connectionText').filter({hasText:'Unvollständige Serverantwort'}).waitFor();
+ emptyReply=false;badGateway=true;await page.locator('#retry').click();await page.locator('#connectionText').filter({hasText:'HTTP 502'}).waitFor();
+ badGateway=false;await page.locator('#retry').click();await page.locator('#connection').waitFor({state:'hidden'});
  await page.locator('#cancel').click();await page.locator('#phase').filter({hasText:'Gestoppt'}).waitFor();assert((await page.locator('#scanWarning').innerText()).includes('Teilergebnis'));
  job={...job,status:'running',phase:'pages',completedAt:null};await page.locator('#newScan').click();await page.locator('#scan').click();await page.locator('#phase').filter({hasText:'Seiten prüfen'}).waitFor();
- expired=true;await page.locator('#phase').filter({hasText:'Fehlgeschlagen'}).waitFor();assert((await page.locator('#scanWarning').innerText()).includes('lokales Teilergebnis'));
+ emptyReply=true;await page.locator('#retry').click();await page.locator('#connection').waitFor({state:'visible'});emptyReply=false;expired=true;await page.locator('#retry').click();await page.locator('#phase').filter({hasText:'Fehlgeschlagen'}).waitFor();assert((await page.locator('#scanWarning').innerText()).includes('lokales Teilergebnis'));assert.equal(await page.locator('#connection').isVisible(),false);
 
  expired=false;
  await page.locator('#linksTab').click();assert.equal(await page.locator('#domainFields').isVisible(),false);

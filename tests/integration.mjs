@@ -63,9 +63,9 @@ try{
  assert(sourceJob.pages.some(p=>p.url.endsWith('/source-test/child')));
  const textJob=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],mode:'standard',seoAudit:false,imageAudit:false});
  assert.equal(textJob.searchScope,'text');assert.equal(textJob.results.length,0);
- const launch=chromium.launch;
- chromium.launch=async()=>({newContext:async()=>({route:async()=>{},newPage:async()=>{let current;return {goto:async url=>{current=url;},waitForTimeout:async()=>{},url:()=>current,content:async()=>'<html><body>DOM nach JavaScript ohne Anbieterkennung</body></html>'};}}),close:async()=>{}});
- try{const rendered=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],searchScope:'html',mode:'always',seoAudit:false,imageAudit:false});assert.equal(rendered.results[0].count,5);assert(rendered.stats[0].rendered>0);}finally{chromium.launch=launch;}
+ const launch=chromium.launch;let launches=0,closes=0;
+ chromium.launch=async()=>{launches++;return {newContext:async()=>({route:async()=>{},newPage:async()=>{let current;return {goto:async url=>{current=url;},waitForTimeout:async()=>{},url:()=>current,content:async()=>'<html><body>DOM nach JavaScript ohne Anbieterkennung'+Array.from({length:24},(_,i)=>'<a href="/render-stress/page'+i+'">Seite</a>').join('')+'</body></html>'};}}),close:async()=>{closes++;}};};
+ try{const rendered=await job({task:'keywords',domains:['https://example.com/source-test'],keywords:['immoviewer'],searchScope:'html',mode:'always',seoAudit:false,imageAudit:false});assert.equal(rendered.results[0].count,5);assert(rendered.stats[0].rendered>0);const before=launches;const recycled=await job({task:'urls',domains:['https://example.com/render-stress'],maxPages:21,mode:'always',seoAudit:false,imageAudit:false,brokenAudit:false});assert.equal(recycled.stats[0].rendered,21);assert.equal(launches-before,2);assert.equal(launches,closes);assert(recycled.pages.every(p=>!('soft404Reasons' in p)));}finally{chromium.launch=launch;}
 
  console.log('PASS: raw HTML search in head/script/iframe/attribute/comment, case-insensitive counts, scope validation and text-search compatibility');
 

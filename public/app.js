@@ -44,9 +44,9 @@ $('scanForm').onsubmit=async e=>{
 };
 async function poll(){
  if(!state.id||state.polling)return;state.polling=true;clearTimeout(state.timer);const id=state.id;
- try{const response=await fetch('/api/scans/'+encodeURIComponent(id)),body=await response.json();
- if(response.status===404){store.remove('scanner-current-v3');state.id=null;showNotice('Der letzte Scan ist nicht mehr verfügbar. Er ist abgelaufen oder der Server wurde neu gestartet. Du kannst mit den gespeicherten Einstellungen neu starten.');$('setup').hidden=false;$('cancel').hidden=true;if(!state.last)$('run').hidden=true;else{state.last={...state.last,status:'failed',phase:'done',completedAt:new Date().toISOString(),error:'Serverergebnis nicht mehr verfügbar. Die angezeigten Daten sind ein lokales Teilergebnis.'};render();}return;}
- if(!response.ok)throw Error(body.error||'Server nicht erreichbar');if(state.id!==id)return;
+ try{const response=await fetch('/api/scans/'+encodeURIComponent(id));
+ if(response.status===404){$('connection').hidden=true;state.cancelling=false;store.remove('scanner-current-v3');state.id=null;showNotice('Der letzte Scan ist nicht mehr verfügbar. Er ist abgelaufen oder der Server wurde neu gestartet. Du kannst mit den gespeicherten Einstellungen neu starten.');$('setup').hidden=false;$('cancel').hidden=true;if(!state.last)$('run').hidden=true;else{state.last={...state.last,status:'failed',phase:'done',completedAt:new Date().toISOString(),error:'Serverergebnis nicht mehr verfügbar. Die angezeigten Daten sind ein lokales Teilergebnis.'};render();}return;}
+ if(!response.ok)throw Error('Server vorübergehend nicht erreichbar (HTTP '+response.status+').');let body;try{body=await response.json();}catch{throw Error('Unvollständige Serverantwort. Die Verbindung wird erneut versucht.');}if(state.id!==id)return;
  state.last=body;$('connection').hidden=true;render();if(terminal(body)){state.cancelling=false;if(state.finished!==id){state.finished=id;if(!$('results').contains(document.activeElement))$('resultTitle').focus({preventScroll:true});}}else state.timer=setTimeout(poll,1500);
  }catch(err){$('connectionText').textContent='Verbindung unterbrochen. Dein Scan kann auf dem Server weiterlaufen. '+err.message;$('connection').hidden=false;state.timer=setTimeout(poll,5000);}
  finally{state.polling=false;}
